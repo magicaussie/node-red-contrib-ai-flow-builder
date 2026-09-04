@@ -484,7 +484,7 @@
     } else {
       const tabs = {};
       NRAFB.listTabs().forEach(tab => { tabs[tab.id] = tab.label; });
-      const allNodes = RED.nodes.createCompleteNodeSet ? RED.nodes.createCompleteNodeSet() : RED.nodes.getNodes();
+      const allNodes = NRAFB.getAllFlowNodes();
       items = allNodes.filter(node => node && node.type !== "tab" && node.id).map(node => ({
         id: node.id,
         label: node.type,
@@ -495,15 +495,60 @@
     }
   };
 
+  NRAFB.getAllFlowNodes = function () {
+    const byId = new Map();
+    const add = node => {
+      if (node && node.id) byId.set(node.id, node);
+    };
+    try {
+      if (RED.nodes.createCompleteNodeSet) RED.nodes.createCompleteNodeSet().forEach(add);
+    } catch (_) {}
+    try {
+      if (RED.nodes.getNodes) RED.nodes.getNodes().forEach(add);
+    } catch (_) {}
+    try {
+      if (RED.nodes.eachNode) RED.nodes.eachNode(add);
+    } catch (_) {}
+    return [...byId.values()];
+  };
+
+  NRAFB.expandConnectedNodeIds = function (nodes, selectedIds) {
+    const byId = new Map(nodes.filter(node => node && node.id).map(node => [node.id, node]));
+    const included = new Set(selectedIds);
+    const pending = [...included];
+    while (pending.length) {
+      const id = pending.pop();
+      const node = byId.get(id);
+      if (!node) continue;
+      const neighbors = [];
+      (node.wires || []).forEach(port => (port || []).forEach(target => neighbors.push(target)));
+      nodes.forEach(candidate => {
+        if ((candidate.wires || []).some(port => (port || []).includes(id))) neighbors.push(candidate.id);
+      });
+      neighbors.forEach(neighbor => {
+        if (byId.has(neighbor) && !included.has(neighbor)) {
+          included.add(neighbor);
+          pending.push(neighbor);
+        }
+      });
+    }
+    return [...included];
+  };
+
   NRAFB.collectFlowContext = function () {
     const activeTabId = RED.workspaces && RED.workspaces.active && RED.workspaces.active();
     const extraTabIds = NRAFB.state.extraTabIds || [];
     const tabIds = [activeTabId, ...extraTabIds].filter(Boolean);
-    const flowJson = (RED.nodes.createCompleteNodeSet ? RED.nodes.createCompleteNodeSet() : RED.nodes.getNodes())
-      .filter(n => n.type === "tab" ? tabIds.includes(n.id) : tabIds.includes(n.z));
-    // Include the tab nodes themselves for context.
-    const tabDefs = (RED.nodes.createCompleteNodeSet ? RED.nodes.createCompleteNodeSet() : [])
-      .filter(n => n.type === "tab" && tabIds.includes(n.id));
+    const allNodes = NRAFB.getAllFlowNodes();
+    const selectedNodeIds = NRAFB.state.nodeIds.length
+      ? NRAFB.expandConnectedNodeIds(allNodes, NRAFB.state.nodeIds)
+      : [];
+    const selectedSet = new Set(selectedNodeIds);
+    const flowJson = allNodes.filter(n => {
+      if (n.type === "tab") return tabIds.includes(n.id);
+      if (selectedSet.size) return selectedSet.has(n.id);
+      return tabIds.includes(n.z);
+    });
     // Build palette context: every registered node type, grouped by module, core flagged.
     const paletteByModule = {};
     try {
@@ -527,8 +572,8 @@
       activeTabId,
       extraTabIds,
       entityIds: NRAFB.state.entityIds,
-      nodeIds: NRAFB.state.nodeIds,
-      flowJson: [...tabDefs, ...flowJson],
+      nodeIds: selectedNodeIds,
+      flowJson,
       palette
     };
   };
