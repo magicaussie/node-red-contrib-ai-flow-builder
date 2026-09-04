@@ -2,6 +2,7 @@ const assert = require("assert");
 const { sanitizeFlows, REDACTED } = require("../lib/sanitizer");
 const { buildSystemPrompt } = require("../lib/context-builder");
 const { compactStates, MAX_ENTITIES, MAX_CONTEXT_CHARS } = require("../lib/home-assistant");
+const { prepareConfig } = require("../lib/home-assistant");
 const { limitMessages, MAX_HISTORY_MESSAGES, MAX_MESSAGE_CHARS } = require("../lib/context-budget");
 
 describe("sanitizeFlows", () => {
@@ -80,5 +81,27 @@ describe("buildSystemPrompt", () => {
     const limited = limitMessages(messages);
     assert.strictEqual(limited.length, MAX_HISTORY_MESSAGES);
     assert.ok(limited.every(message => message.content.length <= MAX_MESSAGE_CHARS + 12));
+  });
+
+  it("keeps only explicitly selected flow nodes", () => {
+    const prompt = buildSystemPrompt({
+      nodeIds: ["keep"],
+      flowJson: [{ type: "tab", id: "tab" }, { id: "keep", type: "inject" }, { id: "drop", type: "debug" }]
+    });
+    assert.match(prompt, /keep/);
+    assert.doesNotMatch(prompt, /debug/);
+  });
+
+  it("enforces the Home Assistant host allowlist", () => {
+    assert.doesNotThrow(() => prepareConfig({
+      baseUrl: "http://homeassistant.local:8123",
+      allowedHosts: "homeassistant.local",
+      credentials: { token: "x" }
+    }));
+    assert.throws(() => prepareConfig({
+      baseUrl: "http://127.0.0.1:8123",
+      allowedHosts: "homeassistant.local",
+      credentials: { token: "x" }
+    }), /allowlist/);
   });
 });

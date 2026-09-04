@@ -12,7 +12,7 @@
 
   function isApplyable(lang) {
     return /^json:(flow|node|subflow):[\w-]+$/.test(lang || "") ||
-           /^json:(delete|connect|disconnect)$/.test(lang || "");
+           /^json:(delete|connect|disconnect|ha-service)$/.test(lang || "");
   }
 
   function renderCodeBlock(lang, code) {

@@ -7,6 +7,8 @@
       conversationId: null,
       providerId: null,
       homeAssistantId: null,
+      entityIds: [],
+      nodeIds: [],
       extraTabIds: [],
       pendingAttachments: []
     }
@@ -217,9 +219,29 @@
     });
   };
 
+  NRAFB.exportConversation = function () {
+    if (!NRAFB.state.conversationId) return;
+    window.open(`ai-flow-builder/conversations/${NRAFB.state.conversationId}/export`, "_blank");
+  };
+
+  NRAFB.cleanupConversations = async function () {
+    const days = window.prompt("Delete conversations older than how many days?", "30");
+    if (days === null || !/^\d+$/.test(days) || Number(days) < 1) return;
+    if (!confirm(`Delete conversations older than ${days} days?`)) return;
+    const response = await fetch("ai-flow-builder/conversations/cleanup", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ days })
+    });
+    const result = await response.json();
+    if (!response.ok) return NRAFB.appendSystemMessage(`Cleanup failed: ${result.error || response.status}`);
+    NRAFB.refreshConversations();
+    NRAFB.appendSystemMessage(`Deleted ${result.deleted} old conversation(s).`);
+  };
+
   NRAFB.bindUi = function () {
     NRAFB.root.on("click", ".nrafb-new", NRAFB.newConversation);
     NRAFB.root.on("click", ".nrafb-delete", NRAFB.deleteConversation);
+    NRAFB.root.on("click", ".nrafb-export", NRAFB.exportConversation);
+    NRAFB.root.on("click", ".nrafb-cleanup", NRAFB.cleanupConversations);
     NRAFB.root.on("change", ".nrafb-conversations", function () {
       NRAFB.loadConversation($(this).val());
     });
@@ -234,6 +256,14 @@
     });
     $root.on("click", ".nrafb-home-assistant-add", () => NRAFB.openHomeAssistantEditor("_ADD_"));
     $root.on("click", ".nrafb-home-assistant-edit", () => NRAFB.openHomeAssistantEditor(NRAFB.state.homeAssistantId));
+    $root.on("click", ".nrafb-entitypicker", () => {
+      NRAFB.state.entityIds = NRAFB.promptIdList("Home Assistant entity IDs", NRAFB.state.entityIds);
+      NRAFB.updateContextLabels();
+    });
+    $root.on("click", ".nrafb-nodepicker", () => {
+      NRAFB.state.nodeIds = NRAFB.promptIdList("Node-RED node IDs", NRAFB.state.nodeIds);
+      NRAFB.updateContextLabels();
+    });
 
     $root.on("click", ".nrafb-provider-add", () => NRAFB.openProviderEditor("_ADD_"));
     $root.on("click", ".nrafb-provider-edit", () => NRAFB.openProviderEditor(NRAFB.state.providerId));
@@ -385,6 +415,17 @@
     setTimeout(() => $(document).on("mousedown", closeHandler), 0);
   };
 
+  NRAFB.promptIdList = function (label, current) {
+    const value = window.prompt(`${label} (comma-separated, blank clears):`, current.join(", "));
+    if (value === null) return current;
+    return value.split(",").map(item => item.trim()).filter(Boolean).slice(0, 100);
+  };
+
+  NRAFB.updateContextLabels = function () {
+    NRAFB.root.find(".nrafb-entitypicker-label").text(NRAFB.state.entityIds.length ? `entities (${NRAFB.state.entityIds.length})` : "entities");
+    NRAFB.root.find(".nrafb-nodepicker-label").text(NRAFB.state.nodeIds.length ? `nodes (${NRAFB.state.nodeIds.length})` : "nodes");
+  };
+
   NRAFB.collectFlowContext = function () {
     const activeTabId = RED.workspaces && RED.workspaces.active && RED.workspaces.active();
     const extraTabIds = NRAFB.state.extraTabIds || [];
@@ -416,6 +457,8 @@
     return {
       activeTabId,
       extraTabIds,
+      entityIds: NRAFB.state.entityIds,
+      nodeIds: NRAFB.state.nodeIds,
       flowJson: [...tabDefs, ...flowJson],
       palette
     };

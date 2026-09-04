@@ -5,6 +5,7 @@
     if (/^json:delete$/.test(lang || "")) return { kind: "delete", target: null };
     if (/^json:connect$/.test(lang || "")) return { kind: "connect", target: null };
     if (/^json:disconnect$/.test(lang || "")) return { kind: "disconnect", target: null };
+    if (/^json:ha-service$/.test(lang || "")) return { kind: "ha-service", target: null };
     const m = /^json:(flow|node|subflow):([\w-]+)$/.exec(lang || "");
     return m ? { kind: m[1], target: m[2] } : null;
   }
@@ -299,6 +300,23 @@
     const data = parseJSON(code);
     if (!data) return;
     if (parsed.kind === "delete" && !confirm(`Delete ${ensureArray(data).length} node or tab item(s) from the canvas?`)) return;
+    if (parsed.kind === "ha-service") {
+      if (!window.NRAFB || !window.NRAFB.state.homeAssistantId) {
+        RED.notify("Select a Home Assistant connection before applying this action.", "error");
+        return;
+      }
+      if (!confirm(`Run Home Assistant service ${data.domain}.${data.service}?`)) return;
+      fetch(`ai-flow-builder/home-assistant/${window.NRAFB.state.homeAssistantId}/service`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data)
+      }).then(async response => {
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`);
+        RED.notify("Home Assistant action completed.", "success");
+      }).catch(error => RED.notify(`Home Assistant action failed: ${error.message}`, "error"));
+      return;
+    }
     console.log("[NRAFB_APPLY] dispatching", parsed.kind, data);
     if (parsed.kind === "flow") return applyFlow(parsed.target, data);
     if (parsed.kind === "node") return applyNode(parsed.target, data);

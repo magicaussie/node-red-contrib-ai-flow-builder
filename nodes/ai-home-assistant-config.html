@@ -5,7 +5,9 @@
     defaults: {
       name: { value: "Home Assistant", required: true },
       baseUrl: { value: "http://homeassistant.local:8123", required: true },
-      domains: { value: "" }
+      domains: { value: "" },
+      allowedHosts: { value: "" },
+      allowedServices: { value: "light.turn_on,light.turn_off,switch.turn_on,switch.turn_off,scene.turn_on,script.turn_on" }
     },
     credentials: {
       token: { type: "password", required: true }
@@ -13,7 +15,26 @@
     label: function () {
       return this.name || this.baseUrl || "Home Assistant";
     },
-    paletteLabel: "Home Assistant"
+    paletteLabel: "Home Assistant",
+    oneditprepare: function () {
+      $("#nrafb-ha-test").on("click", async function () {
+        const $button = $(this).prop("disabled", true).text("Testing...");
+        try {
+          const response = await fetch("ai-flow-builder/home-assistant/test", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              baseUrl: $("#node-config-input-baseUrl").val(),
+              token: $("#node-config-input-token").val(),
+              allowedHosts: $("#node-config-input-allowedHosts").val()
+            })
+          });
+          const result = await response.json();
+          RED.notify(response.ok ? `Connected. ${result.entityCount} entities found.` : result.error, response.ok ? "success" : "error");
+        } catch (error) { RED.notify(`Connection test failed: ${error.message}`, "error"); }
+        $button.prop("disabled", false).text("Test connection");
+      });
+    }
   });
 </script>
 
@@ -29,6 +50,17 @@
   <div class="form-row">
     <label for="node-config-input-token"><i class="fa fa-key"></i> Access token</label>
     <input type="password" id="node-config-input-token" />
+  </div>
+  <div class="form-row">
+    <label for="node-config-input-allowedHosts"><i class="fa fa-shield"></i> Allowed hosts</label>
+    <input type="text" id="node-config-input-allowedHosts" placeholder="homeassistant.local or IP (optional)" />
+  </div>
+  <div class="form-row">
+    <label for="node-config-input-allowedServices"><i class="fa fa-check"></i> Allowed services</label>
+    <input type="text" id="node-config-input-allowedServices" placeholder="light.turn_on,light.turn_off" />
+  </div>
+  <div class="form-row">
+    <button type="button" class="red-ui-button" id="nrafb-ha-test">Test connection</button>
   </div>
   <div class="form-row">
     <label for="node-config-input-domains"><i class="fa fa-filter"></i> Domains</label>
