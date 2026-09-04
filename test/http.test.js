@@ -68,4 +68,16 @@ describe("AI Chat HTTP routes", () => {
       .send({ content: "x".repeat(50001), providerId: "provider" })
       .expect(400);
   });
+
+  it("returns provider failures as an SSE error event", async () => {
+    provider.provider = "unsupported";
+    const created = await request(app).post("/ai-flow-builder/conversations").send({}).expect(200);
+    const response = await request(app)
+      .post(`/ai-flow-builder/conversations/${created.body.id}/messages`)
+      .send({ content: "hello", providerId: "provider" })
+      .expect(200);
+    assert.match(response.headers["content-type"], /text\/event-stream/);
+    assert.match(response.text, /event: error/);
+    assert.match(response.text, /unknown provider/);
+  });
 });
