@@ -2,7 +2,7 @@
 
 > AI chat sidebar for **Node-RED** — chat with **OpenAI** or **Anthropic** right inside the editor. The assistant sees your flow(s), reads installed palette modules, accepts images/files, and can **apply code changes directly to your canvas** — the active tab or any other tab.
 
-> Version: **0.1.5**
+> Version: **0.1.6**
 
 ---
 
@@ -10,6 +10,7 @@
 
 - 💬 Right-sidebar chat with streaming responses (SSE).
 - 🏠 Optional Home Assistant entity context from a read-only `/api/states` snapshot.
+- ⚡ Bounded context windows, filtered Home Assistant domains, attachment limits, and Apply-all canvas updates.
 - 🤖 **OpenAI** and **Anthropic** — pick any model available from your account (free-text field with live suggestions + a direct link to each provider's official model list).
 - 🔒 API keys live in a Node-RED **config node** (encrypted `flows_cred.json`). They never reach the browser.
 - 📎 Multipart upload of images, PDFs, JSON/text — with an in-chat viewer (lightbox + text pane + PDF embed).
@@ -67,13 +68,15 @@ node-red-restart        # or however you run your instance
 
 ### What the AI sees
 
-To include Home Assistant entities, add an `ai-home-assistant-config` node, enter the Home Assistant base URL and a long-lived access token, and deploy. Select the connection in the sidebar dropdown. The token stays encrypted in Node-RED; only entity IDs, states, friendly names, units, device classes, and timestamps are included in the prompt.
+To include Home Assistant entities, add an `ai-home-assistant-config` node, enter the Home Assistant base URL and a long-lived access token, optionally restrict Domains such as `sensor,light,switch`, and deploy. Select the connection in the sidebar dropdown. The token stays encrypted in Node-RED; only entity IDs, states, friendly names, units, device classes, and timestamps are included in the prompt.
 
 Every message sends, as system context, a sanitized snapshot of:
 
 - the active tab + any extra tabs you ticked in the multi-select,
 - the full catalog of registered node types, grouped by module, with the core modules flagged — so the AI knows exactly what's usable in this installation (and what isn't).
 - optionally, a read-only Home Assistant entity snapshot selected from the sidebar dropdown.
+
+Large contexts are bounded automatically: recent conversation history, flow JSON, palette metadata, text attachments, images, PDFs, and Home Assistant entities are capped before a provider request is made.
 
 The **sanitizer** scrubs anything that looks like a secret *value* (key names are kept so the model understands the structure). See [Security](#security) below.
 

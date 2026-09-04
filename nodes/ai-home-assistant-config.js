@@ -4,6 +4,7 @@ module.exports = function (RED) {
     this.name = config.name;
     this.label = config.name;
     this.baseUrl = String(config.baseUrl || "").replace(/\/+$/, "");
+    this.domains = config.domains || "";
   }
 
   RED.nodes.registerType("ai-home-assistant-config", AiHomeAssistantConfigNode, {

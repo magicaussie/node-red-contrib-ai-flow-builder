@@ -109,10 +109,15 @@
     const node = RED.nodes.node(nodeId);
     if (!node) { RED.notify(`Node ${nodeId} not found.`, "error"); return; }
     patch = sanitizeIncoming(patch) || {};
+    const changes = {};
     Object.keys(patch).forEach(k => {
-      if (k === "id" || k === "type" || k === "z") return;
+      if (k === "id" || k === "type" || k === "z" || /password|token|secret|api[-_]?key|credential|authorization/i.test(k)) return;
+      changes[k] = node[k];
       node[k] = patch[k];
     });
+    if (RED.history && typeof RED.history.push === "function" && Object.keys(changes).length) {
+      RED.history.push({ t: "edit", node, changes, dirty: RED.nodes.dirty() });
+    }
     node.changed = true;
     RED.nodes.dirty(true);
     RED.events.emit("nodes:change", node);
@@ -142,7 +147,7 @@
     const removed = [];
     const removedLinks = [];
     const removedTabs = [];
-    const historyEntries = [];
+    const wireChanges = [];
     ids.forEach(id => {
       let n = RED.nodes.node(id);
       if (n) {
@@ -151,7 +156,12 @@
           if (!other.wires) return;
           other.wires.forEach(portWires => {
             const idx = portWires.indexOf(id);
-            if (idx !== -1) { portWires.splice(idx, 1); other.dirty = true; }
+            if (idx !== -1) {
+              const sourcePort = other.wires.indexOf(portWires);
+              wireChanges.push({ source: other, sourcePort, target: n });
+              portWires.splice(idx, 1);
+              other.dirty = true;
+            }
           });
         });
         RED.nodes.remove(id);
@@ -169,7 +179,7 @@
       }
     });
     if (RED.history && typeof RED.history.push === "function" && (removed.length || removedTabs.length)) {
-      RED.history.push({ t: "delete", nodes: removed, workspaces: removedTabs, dirty: RED.nodes.dirty() });
+      RED.history.push({ t: "delete", nodes: removed, workspaces: removedTabs, links: wireChanges, dirty: RED.nodes.dirty() });
     }
     removed.forEach(n => RED.events.emit("nodes:remove", n));
     RED.nodes.dirty(true);
@@ -288,6 +298,7 @@
     if (!parsed) { RED.notify(`Unknown apply target: ${lang}`, "error"); return; }
     const data = parseJSON(code);
     if (!data) return;
+    if (parsed.kind === "delete" && !confirm(`Delete ${ensureArray(data).length} node or tab item(s) from the canvas?`)) return;
     console.log("[NRAFB_APPLY] dispatching", parsed.kind, data);
     if (parsed.kind === "flow") return applyFlow(parsed.target, data);
     if (parsed.kind === "node") return applyNode(parsed.target, data);

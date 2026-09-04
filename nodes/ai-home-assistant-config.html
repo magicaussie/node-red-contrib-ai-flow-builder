@@ -4,7 +4,8 @@
     hasUsers: false,
     defaults: {
       name: { value: "Home Assistant", required: true },
-      baseUrl: { value: "http://homeassistant.local:8123", required: true }
+      baseUrl: { value: "http://homeassistant.local:8123", required: true },
+      domains: { value: "" }
     },
     credentials: {
       token: { type: "password", required: true }
@@ -29,9 +30,13 @@
     <label for="node-config-input-token"><i class="fa fa-key"></i> Access token</label>
     <input type="password" id="node-config-input-token" />
   </div>
+  <div class="form-row">
+    <label for="node-config-input-domains"><i class="fa fa-filter"></i> Domains</label>
+    <input type="text" id="node-config-input-domains" placeholder="sensor, light, switch (optional)" />
+  </div>
 </script>
 
 <script type="text/html" data-help-name="ai-home-assistant-config">
-  <p>Read-only Home Assistant connection used by the AI Chat sidebar to inspect entity states.</p>
+  <p>Read-only Home Assistant connection used by the AI Chat sidebar to inspect entity states. Optionally restrict the snapshot to comma-separated domains such as <code>sensor,light,switch</code>.</p>
   <p>Create a long-lived access token in your Home Assistant profile. The token is stored encrypted by Node-RED and never sent to the AI provider.</p>
 </script>

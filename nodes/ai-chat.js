@@ -1,10 +1,12 @@
 const path = require("path");
 const express = require("express");
 const multer = require("multer");
+const fs = require("fs").promises;
 const { Storage } = require("../lib/storage");
 const { streamProvider } = require("../lib/providers");
 const { buildSystemPrompt } = require("../lib/context-builder");
 const { fetchHomeAssistantStates } = require("../lib/home-assistant");
+const { limitMessages } = require("../lib/context-budget");
 
 module.exports = function (RED) {
   const publicDir = path.join(__dirname, "..", "public");
@@ -61,6 +63,9 @@ module.exports = function (RED) {
   RED.httpAdmin.post("/ai-flow-builder/conversations/:id/messages", writePerm, express.json({ limit: "25mb" }), async (req, res) => {
     const { id } = req.params;
     const { content, attachments = [], flowContext = {}, providerId, homeAssistantId } = req.body || {};
+    if (typeof content !== "string" || content.length > 50000) {
+      return res.status(400).json({ error: "message content must be text of at most 50000 characters" });
+    }
 
     const providerNode = RED.nodes.getNode(providerId);
     if (!providerNode || providerNode.type !== "ai-provider-config") {
@@ -76,18 +81,37 @@ module.exports = function (RED) {
     catch (e) { return res.status(404).json({ error: "conversation not found" }); }
 
     // Resolve attachment storedName → filesystem path
-    const resolvedAttachments = attachments.map(a => ({
-      ...a,
-      path: storage.attachmentPath(id, a.storedName)
-    }));
+    if (!Array.isArray(attachments) || attachments.length > 5) {
+      return res.status(400).json({ error: "attachments must be an array of at most 5 files" });
+    }
+    const resolvedAttachments = [];
+    for (const attachment of attachments) {
+      if (!attachment || typeof attachment.storedName !== "string") {
+        return res.status(400).json({ error: "invalid attachment reference" });
+      }
+      const attachmentPath = storage.attachmentPath(id, attachment.storedName);
+      let stat;
+      try { stat = await fs.stat(attachmentPath); }
+      catch (_) { return res.status(400).json({ error: "attachment not found" }); }
+      if (stat.size > 10 * 1024 * 1024) return res.status(400).json({ error: "attachment is too large" });
+      const mimeType = String(attachment.mimeType || "application/octet-stream").toLowerCase();
+      if (!/^(image\/(png|jpeg|gif|webp)|application\/pdf|application\/json|text\/plain|text\/csv|text\/yaml|application\/yaml)$/i.test(mimeType)) {
+        return res.status(400).json({ error: "unsupported attachment type" });
+      }
+      resolvedAttachments.push({
+        id: attachment.id,
+        storedName: attachment.storedName,
+        originalName: String(attachment.originalName || attachment.storedName).slice(0, 200),
+        mimeType,
+        size: stat.size,
+        path: attachmentPath
+      });
+    }
 
     await storage.appendMessage(id, {
       role: "user",
       content,
-      attachments: attachments.map(a => ({
-        id: a.id, storedName: a.storedName, originalName: a.originalName,
-        mimeType: a.mimeType, size: a.size
-      }))
+      attachments: resolvedAttachments.map(({ path, ...metadata }) => metadata)
     });
 
     res.set({
@@ -100,10 +124,10 @@ module.exports = function (RED) {
 
     const send = (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
 
-    const history = (await storage.getConversation(id)).messages.map(m => ({
+    const history = limitMessages((await storage.getConversation(id)).messages.map(m => ({
       role: m.role, content: m.content || "",
       attachments: (m.attachments || []).map(a => ({ ...a, path: storage.attachmentPath(id, a.storedName) }))
-    }));
+    })));
     // Ensure current message is present with resolved paths.
     history[history.length - 1].attachments = resolvedAttachments;
 
@@ -143,7 +167,14 @@ module.exports = function (RED) {
     res.end();
   });
 
-  const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
+  const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 10 * 1024 * 1024, files: 5, fields: 20 },
+    fileFilter: (req, file, cb) => {
+      const allowed = /^(image\/(png|jpeg|gif|webp)|application\/pdf|application\/json|text\/plain|text\/csv|text\/yaml|application\/yaml)$/i;
+      cb(null, allowed.test(file.mimetype));
+    }
+  });
 
   RED.httpAdmin.post("/ai-flow-builder/conversations/:id/attachments", writePerm, upload.array("files", 10), async (req, res) => {
     try {

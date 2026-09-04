@@ -324,7 +324,12 @@
     } else {
       inner = `<a href="${url}" download="${name}" class="nrafb-btn">Download ${name}</a>`;
     }
-    $overlay.append(`<div class="nrafb-viewer-body">${inner}<div style="text-align:right;margin-top:8px"><a href="${url}" download="${name}">download</a> · <button class="nrafb-btn nrafb-viewer-close">close</button></div></div>`);
+    const $body = $(`<div class="nrafb-viewer-body"></div>`).append(inner);
+    const $actions = $(`<div style="text-align:right;margin-top:8px"></div>`);
+    $actions.append($("<a>").attr({ href: url, download: name }).text("download"));
+    $actions.append(" · ");
+    $actions.append($('<button class="nrafb-btn nrafb-viewer-close">close</button>'));
+    $overlay.append($body.append($actions));
     $("body").append($overlay);
     if (mime && (mime.startsWith("text/") || mime === "application/json")) {
       fetch(url).then(r => r.text()).then(txt => $overlay.find(".nrafb-viewer-text").text(txt));
@@ -447,6 +452,11 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body)
       });
+      if (!resp.ok) {
+        let detail = `HTTP ${resp.status}`;
+        try { detail = (await resp.json()).error || detail; } catch (_) {}
+        throw new Error(detail);
+      }
       NRAFB.state.pendingAttachments = [];
       const reader = resp.body.getReader();
       const decoder = new TextDecoder();

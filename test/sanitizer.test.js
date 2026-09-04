@@ -2,6 +2,7 @@ const assert = require("assert");
 const { sanitizeFlows, REDACTED } = require("../lib/sanitizer");
 const { buildSystemPrompt } = require("../lib/context-builder");
 const { compactStates, MAX_ENTITIES, MAX_CONTEXT_CHARS } = require("../lib/home-assistant");
+const { limitMessages, MAX_HISTORY_MESSAGES, MAX_MESSAGE_CHARS } = require("../lib/context-budget");
 
 describe("sanitizeFlows", () => {
   it("strips top-level sensitive keys", () => {
@@ -70,5 +71,14 @@ describe("buildSystemPrompt", () => {
     assert.strictEqual(result.truncated, true);
     assert.ok(result.states.length <= MAX_ENTITIES);
     assert.ok(JSON.stringify(result.states).length <= MAX_CONTEXT_CHARS);
+  });
+
+  it("limits conversation history and message size", () => {
+    const messages = Array.from({ length: MAX_HISTORY_MESSAGES + 3 }, (_, index) => ({
+      role: "user", content: "x".repeat(MAX_MESSAGE_CHARS + 100), attachments: []
+    }));
+    const limited = limitMessages(messages);
+    assert.strictEqual(limited.length, MAX_HISTORY_MESSAGES);
+    assert.ok(limited.every(message => message.content.length <= MAX_MESSAGE_CHARS + 12));
   });
 });

@@ -5,6 +5,7 @@ module.exports = function (RED) {
     this.label = config.name; // keep backwards/backend-friendly alias
     this.provider = config.provider; // "openai" | "anthropic"
     this.model = config.model;
+    this.maxTokens = Number(config.maxTokens) || 4096;
     this.baseUrl = config.baseUrl || "";
     // this.credentials.apiKey is encrypted by Node-RED
   }

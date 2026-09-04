@@ -45,6 +45,7 @@
   function render(markdown) {
     const src = String(markdown || "");
     let out = "";
+    let applyableCount = 0;
     let lastIndex = 0;
     let m;
     CODE_FENCE.lastIndex = 0;
@@ -52,10 +53,15 @@
       if (m.index > lastIndex) {
         out += renderInline(src.slice(lastIndex, m.index));
       }
-      out += renderCodeBlock(m[1] || "", m[2]);
+      const lang = m[1] || "";
+      if (isApplyable(lang)) applyableCount++;
+      out += renderCodeBlock(lang, m[2]);
       lastIndex = CODE_FENCE.lastIndex;
     }
     if (lastIndex < src.length) out += renderInline(src.slice(lastIndex));
+    if (applyableCount > 1) {
+      out = `<div class="nrafb-batch-actions"><button class="nrafb-btn nrafb-apply-all">Apply all ${applyableCount} changes</button></div>` + out;
+    }
     return out;
   }
 
@@ -91,6 +97,18 @@
     } else {
       alert("Preview handler not loaded yet.");
     }
+  });
+
+  $(document).on("click", ".nrafb-apply-all", function () {
+    const $message = $(this).closest(".nrafb-msg");
+    const $blocks = $message.find(".nrafb-codeblock").filter(function () {
+      return isApplyable($(this).data("lang"));
+    });
+    if (!confirm(`Apply all ${$blocks.length} AI changes to the canvas?`)) return;
+    $blocks.each(function () {
+      const $block = $(this);
+      window.NRAFB_APPLY.apply($block.data("lang"), $block.find("code").text());
+    });
   });
 
   window.NRAFB_RENDER = { render };

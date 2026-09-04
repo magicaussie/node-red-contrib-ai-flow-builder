@@ -45,4 +45,16 @@ describe("Storage", () => {
     assert.ok(!fs.existsSync(attPath));
     assert.strictEqual((await storage.listConversations()).length, 0);
   });
+
+  it("serializes concurrent message appends", async () => {
+    const c = await storage.createConversation();
+    await Promise.all([
+      storage.appendMessage(c.id, { role: "user", content: "first" }),
+      storage.appendMessage(c.id, { role: "user", content: "second" }),
+      storage.appendMessage(c.id, { role: "assistant", content: "third" })
+    ]);
+    const loaded = await storage.getConversation(c.id);
+    assert.strictEqual(loaded.messages.length, 3);
+    assert.deepStrictEqual(loaded.messages.map(message => message.content), ["first", "second", "third"]);
+  });
 });
