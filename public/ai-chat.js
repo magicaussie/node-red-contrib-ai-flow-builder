@@ -6,6 +6,7 @@
     state: {
       conversationId: null,
       providerId: null,
+      homeAssistantId: null,
       extraTabIds: [],
       pendingAttachments: []
     }
@@ -62,6 +63,28 @@
       const map = new Map();
       [...serverList, ...localList].forEach(p => map.set(p.id, p));
       NRAFB.renderProviders([...map.values()], preferredId);
+    });
+  };
+
+  NRAFB.renderHomeAssistant = function (list) {
+    const $sel = NRAFB.root.find(".nrafb-home-assistant");
+    const previous = NRAFB.state.homeAssistantId;
+    $sel.empty().append(`<option value="">HA entities off</option>`);
+    (list || []).forEach(c => $sel.append(`<option value="${c.id}">${$('<div>').text(c.label).html()}</option>`));
+    NRAFB.state.homeAssistantId = list && list.some(c => c.id === previous) ? previous : null;
+    $sel.val(NRAFB.state.homeAssistantId || "");
+  };
+
+  NRAFB.refreshHomeAssistant = function () {
+    const list = [];
+    RED.nodes.eachConfig(n => {
+      if (n.type === "ai-home-assistant-config") list.push({ id: n.id, label: n.name || n.baseUrl || "Home Assistant" });
+    });
+    NRAFB.renderHomeAssistant(list);
+    $.getJSON("ai-flow-builder/home-assistant").done(serverList => {
+      const local = new Map(list.map(c => [c.id, c]));
+      (serverList || []).forEach(c => local.set(c.id, c));
+      NRAFB.renderHomeAssistant([...local.values()]);
     });
   };
 
@@ -167,6 +190,9 @@
 
     $root.on("change", ".nrafb-provider", function () {
       NRAFB.state.providerId = $(this).val();
+    });
+    $root.on("change", ".nrafb-home-assistant", function () {
+      NRAFB.state.homeAssistantId = $(this).val() || null;
     });
 
     $root.on("click", ".nrafb-provider-add", () => NRAFB.openProviderEditor("_ADD_"));
@@ -373,7 +399,8 @@
         content: text,
         attachments: NRAFB.state.pendingAttachments,
         flowContext: NRAFB.collectFlowContext(),
-        providerId: NRAFB.state.providerId
+        providerId: NRAFB.state.providerId,
+        homeAssistantId: NRAFB.state.homeAssistantId
       };
       const resp = await fetch(`ai-flow-builder/conversations/${NRAFB.state.conversationId}/messages`, {
         method: "POST",

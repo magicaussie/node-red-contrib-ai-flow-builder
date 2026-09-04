@@ -9,6 +9,7 @@
 ## Highlights
 
 - 💬 Right-sidebar chat with streaming responses (SSE).
+- 🏠 Optional Home Assistant entity context from a read-only `/api/states` snapshot.
 - 🤖 **OpenAI** and **Anthropic** — pick any model available from your account (free-text field with live suggestions + a direct link to each provider's official model list).
 - 🔒 API keys live in a Node-RED **config node** (encrypted `flows_cred.json`). They never reach the browser.
 - 📎 Multipart upload of images, PDFs, JSON/text — with an in-chat viewer (lightbox + text pane + PDF embed).
@@ -66,10 +67,13 @@ node-red-restart        # or however you run your instance
 
 ### What the AI sees
 
+To include Home Assistant entities, add an `ai-home-assistant-config` node, enter the Home Assistant base URL and a long-lived access token, and deploy. Select the connection in the sidebar dropdown. The token stays encrypted in Node-RED; only entity IDs, states, friendly names, units, device classes, and timestamps are included in the prompt.
+
 Every message sends, as system context, a sanitized snapshot of:
 
 - the active tab + any extra tabs you ticked in the multi-select,
 - the full catalog of registered node types, grouped by module, with the core modules flagged — so the AI knows exactly what's usable in this installation (and what isn't).
+- optionally, a read-only Home Assistant entity snapshot selected from the sidebar dropdown.
 
 The **sanitizer** scrubs anything that looks like a secret *value* (key names are kept so the model understands the structure). See [Security](#security) below.
 

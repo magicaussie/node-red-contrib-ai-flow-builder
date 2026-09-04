@@ -1,5 +1,6 @@
 const assert = require("assert");
 const { sanitizeFlows, REDACTED } = require("../lib/sanitizer");
+const { buildSystemPrompt } = require("../lib/context-builder");
 
 describe("sanitizeFlows", () => {
   it("strips top-level sensitive keys", () => {
@@ -44,5 +45,18 @@ describe("sanitizeFlows", () => {
     const copy = JSON.parse(JSON.stringify(input));
     sanitizeFlows(input);
     assert.deepStrictEqual(input, copy);
+  });
+});
+
+describe("buildSystemPrompt", () => {
+  it("includes Home Assistant entity context without connection secrets", () => {
+    const prompt = buildSystemPrompt({
+      homeAssistant: {
+        states: [{ entity_id: "light.kitchen", state: "on", attributes: { friendly_name: "Kitchen" } }]
+      }
+    });
+    assert.match(prompt, /light\.kitchen/);
+    assert.match(prompt, /Kitchen/);
+    assert.doesNotMatch(prompt, /token|Bearer|secret/i);
   });
 });

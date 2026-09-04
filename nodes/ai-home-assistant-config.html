@@ -1,0 +1,37 @@
+<script type="text/javascript">
+  RED.nodes.registerType("ai-home-assistant-config", {
+    category: "config",
+    hasUsers: false,
+    defaults: {
+      name: { value: "Home Assistant", required: true },
+      baseUrl: { value: "http://homeassistant.local:8123", required: true }
+    },
+    credentials: {
+      token: { type: "password", required: true }
+    },
+    label: function () {
+      return this.name || this.baseUrl || "Home Assistant";
+    },
+    paletteLabel: "Home Assistant"
+  });
+</script>
+
+<script type="text/html" data-template-name="ai-home-assistant-config">
+  <div class="form-row">
+    <label for="node-config-input-name"><i class="fa fa-tag"></i> Name</label>
+    <input type="text" id="node-config-input-name" placeholder="Home Assistant" />
+  </div>
+  <div class="form-row">
+    <label for="node-config-input-baseUrl"><i class="fa fa-link"></i> URL</label>
+    <input type="url" id="node-config-input-baseUrl" placeholder="http://homeassistant.local:8123" />
+  </div>
+  <div class="form-row">
+    <label for="node-config-input-token"><i class="fa fa-key"></i> Access token</label>
+    <input type="password" id="node-config-input-token" />
+  </div>
+</script>
+
+<script type="text/html" data-help-name="ai-home-assistant-config">
+  <p>Read-only Home Assistant connection used by the AI Chat sidebar to inspect entity states.</p>
+  <p>Create a long-lived access token in your Home Assistant profile. The token is stored encrypted by Node-RED and never sent to the AI provider.</p>
+</script>

@@ -4,6 +4,7 @@ const multer = require("multer");
 const { Storage } = require("../lib/storage");
 const { streamProvider } = require("../lib/providers");
 const { buildSystemPrompt } = require("../lib/context-builder");
+const { fetchHomeAssistantStates } = require("../lib/home-assistant");
 
 module.exports = function (RED) {
   const publicDir = path.join(__dirname, "..", "public");
@@ -25,6 +26,16 @@ module.exports = function (RED) {
       }
     });
     res.json(providers);
+  });
+
+  RED.httpAdmin.get("/ai-flow-builder/home-assistant", readPerm, (req, res) => {
+    const configs = [];
+    RED.nodes.eachNode(n => {
+      if (n.type === "ai-home-assistant-config") {
+        configs.push({ id: n.id, label: n.name || n.label || n.baseUrl });
+      }
+    });
+    res.json(configs);
   });
 
   RED.httpAdmin.get("/ai-flow-builder/conversations", readPerm, async (req, res) => {
@@ -49,11 +60,15 @@ module.exports = function (RED) {
 
   RED.httpAdmin.post("/ai-flow-builder/conversations/:id/messages", writePerm, express.json({ limit: "25mb" }), async (req, res) => {
     const { id } = req.params;
-    const { content, attachments = [], flowContext = {}, providerId } = req.body || {};
+    const { content, attachments = [], flowContext = {}, providerId, homeAssistantId } = req.body || {};
 
     const providerNode = RED.nodes.getNode(providerId);
     if (!providerNode || providerNode.type !== "ai-provider-config") {
       return res.status(400).json({ error: "invalid providerId" });
+    }
+    const homeAssistantNode = homeAssistantId ? RED.nodes.getNode(homeAssistantId) : null;
+    if (homeAssistantId && (!homeAssistantNode || homeAssistantNode.type !== "ai-home-assistant-config")) {
+      return res.status(400).json({ error: "invalid homeAssistantId" });
     }
 
     let conv;
@@ -92,7 +107,15 @@ module.exports = function (RED) {
     // Ensure current message is present with resolved paths.
     history[history.length - 1].attachments = resolvedAttachments;
 
-    const systemPrompt = buildSystemPrompt(flowContext);
+    let homeAssistantContext;
+    if (homeAssistantId) {
+      try {
+        homeAssistantContext = { states: await fetchHomeAssistantStates(homeAssistantNode) };
+      } catch (e) {
+        homeAssistantContext = { error: `Could not read Home Assistant entities: ${e.message}` };
+      }
+    }
+    const systemPrompt = buildSystemPrompt({ ...flowContext, homeAssistant: homeAssistantContext });
     let assistantBuffer = "";
 
     try {

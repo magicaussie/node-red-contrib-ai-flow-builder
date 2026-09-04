@@ -29,6 +29,7 @@
     "version": ">=3.0.0",
     "nodes": {
       "ai-provider-config": "nodes/ai-provider-config.js",
+      "ai-home-assistant-config": "nodes/ai-home-assistant-config.js",
       "ai-chat": "nodes/ai-chat.js"
     }
   },
