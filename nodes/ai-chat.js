@@ -53,6 +53,15 @@ module.exports = function (RED) {
     } catch (error) { res.status(400).json({ error: error.message }); }
   });
 
+  RED.httpAdmin.get("/ai-flow-builder/home-assistant/:id/entities", readPerm, async (req, res) => {
+    const node = RED.nodes.getNode(req.params.id);
+    if (!node || node.type !== "ai-home-assistant-config") return res.status(400).json({ error: "invalid homeAssistantId" });
+    try {
+      const snapshot = await fetchHomeAssistantStates(node);
+      res.json(snapshot);
+    } catch (error) { res.status(400).json({ error: error.message }); }
+  });
+
   RED.httpAdmin.post("/ai-flow-builder/home-assistant/:id/service", writePerm, express.json({ limit: "100kb" }), async (req, res) => {
     const node = RED.nodes.getNode(req.params.id);
     if (!node || node.type !== "ai-home-assistant-config") return res.status(400).json({ error: "invalid homeAssistantId" });

@@ -172,6 +172,49 @@
   cursor: pointer;
 }
 .nrafb-tabpicker-panel label:hover { background: var(--red-ui-secondary-background, #f3f3f3); }
+.nrafb-context-picker-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 21000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.35);
+}
+.nrafb-context-picker {
+  width: min(560px, 92vw);
+  max-height: min(680px, 86vh);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--red-ui-primary-background, #fff);
+  color: var(--red-ui-primary-text-color, #333);
+  border: 1px solid var(--red-ui-form-input-border-color, #ccc);
+  border-radius: 6px;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.28);
+}
+.nrafb-context-picker-header,
+.nrafb-context-picker-toolbar { display: flex; align-items: center; gap: 6px; }
+.nrafb-context-picker-header strong { flex: 1; font-size: 14px; }
+.nrafb-context-picker-header .nrafb-context-close { min-width: 28px; padding: 4px 8px; }
+.nrafb-context-search {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 9px;
+  border: 1px solid var(--red-ui-form-input-border-color, #ccc);
+  border-radius: 3px;
+  background: var(--red-ui-form-input-background, #fff);
+  color: inherit;
+}
+.nrafb-context-picker-count { flex: 1; opacity: 0.7; }
+.nrafb-context-picker-list { overflow-y: auto; min-height: 120px; border-top: 1px solid var(--red-ui-secondary-border-color, #ddd); }
+.nrafb-context-row { display: flex; align-items: flex-start; gap: 8px; padding: 7px 4px; cursor: pointer; border-bottom: 1px solid var(--red-ui-secondary-border-color, #eee); }
+.nrafb-context-row:hover { background: var(--red-ui-secondary-background, #f3f3f3); }
+.nrafb-context-row span { display: flex; flex-direction: column; min-width: 0; }
+.nrafb-context-row strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nrafb-context-row small { opacity: 0.7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nrafb-context-empty { padding: 24px 8px; text-align: center; opacity: 0.7; }
 .nrafb-viewer-overlay {
   position: fixed;
   inset: 0;

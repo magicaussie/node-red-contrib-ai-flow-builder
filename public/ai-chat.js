@@ -256,14 +256,8 @@
     });
     $root.on("click", ".nrafb-home-assistant-add", () => NRAFB.openHomeAssistantEditor("_ADD_"));
     $root.on("click", ".nrafb-home-assistant-edit", () => NRAFB.openHomeAssistantEditor(NRAFB.state.homeAssistantId));
-    $root.on("click", ".nrafb-entitypicker", () => {
-      NRAFB.state.entityIds = NRAFB.promptIdList("Home Assistant entity IDs", NRAFB.state.entityIds);
-      NRAFB.updateContextLabels();
-    });
-    $root.on("click", ".nrafb-nodepicker", () => {
-      NRAFB.state.nodeIds = NRAFB.promptIdList("Node-RED node IDs", NRAFB.state.nodeIds);
-      NRAFB.updateContextLabels();
-    });
+    $root.on("click", ".nrafb-entitypicker", () => NRAFB.openContextPicker("entities"));
+    $root.on("click", ".nrafb-nodepicker", () => NRAFB.openContextPicker("nodes"));
 
     $root.on("click", ".nrafb-provider-add", () => NRAFB.openProviderEditor("_ADD_"));
     $root.on("click", ".nrafb-provider-edit", () => NRAFB.openProviderEditor(NRAFB.state.providerId));
@@ -415,15 +409,90 @@
     setTimeout(() => $(document).on("mousedown", closeHandler), 0);
   };
 
-  NRAFB.promptIdList = function (label, current) {
-    const value = window.prompt(`${label} (comma-separated, blank clears):`, current.join(", "));
-    if (value === null) return current;
-    return value.split(",").map(item => item.trim()).filter(Boolean).slice(0, 100);
-  };
-
   NRAFB.updateContextLabels = function () {
     NRAFB.root.find(".nrafb-entitypicker-label").text(NRAFB.state.entityIds.length ? `entities (${NRAFB.state.entityIds.length})` : "entities");
     NRAFB.root.find(".nrafb-nodepicker-label").text(NRAFB.state.nodeIds.length ? `nodes (${NRAFB.state.nodeIds.length})` : "nodes");
+  };
+
+  NRAFB.closePicker = function () {
+    $(".nrafb-context-picker-overlay").remove();
+  };
+
+  NRAFB.openContextPicker = function (kind) {
+    NRAFB.closePicker();
+    const isEntities = kind === "entities";
+    const selected = new Set(isEntities ? NRAFB.state.entityIds : NRAFB.state.nodeIds);
+    const $overlay = $("<div class='nrafb-context-picker-overlay'></div>");
+    const $panel = $("<div class='nrafb-context-picker'></div>");
+    const $search = $("<input type='search' class='nrafb-context-search'>").attr("placeholder", isEntities ? "Search by entity, name, domain..." : "Search by node ID, type, tab...");
+    const $list = $("<div class='nrafb-context-picker-list'></div>");
+    const $count = $("<span class='nrafb-context-picker-count'></span>");
+    const $apply = $("<button class='nrafb-btn nrafb-context-apply'>Use selected</button>");
+    const $clear = $("<button class='nrafb-btn nrafb-context-clear'>Clear</button>");
+    const $close = $("<button class='nrafb-btn nrafb-context-close' title='Close'>×</button>");
+    $panel.append($("<div class='nrafb-context-picker-header'></div>").append($('<strong>').text(isEntities ? "Choose Home Assistant entities" : "Choose Node-RED nodes"), $close));
+    $panel.append($search, $("<div class='nrafb-context-picker-toolbar'></div>").append($count, $clear, $apply), $list);
+    $overlay.append($panel);
+    $("body").append($overlay);
+
+    let items = [];
+    const render = () => {
+      const query = String($search.val() || "").toLowerCase();
+      $list.empty();
+      const visible = items.filter(item => item.search.includes(query));
+      if (!visible.length) $list.append($('<div class="nrafb-context-empty">').text(items.length ? "No matches" : "No items available"));
+      visible.forEach(item => {
+        const $row = $("<label class='nrafb-context-row'></label>");
+        const $checkbox = $("<input type='checkbox'>").val(item.id).prop("checked", selected.has(item.id));
+        $row.append($checkbox, $("<span>").append($('<strong>').text(item.label), $('<small>').text(item.detail)));
+        $list.append($row);
+      });
+      $count.text(`${selected.size} selected`);
+    };
+    const finish = () => {
+      if (isEntities) NRAFB.state.entityIds = [...selected];
+      else NRAFB.state.nodeIds = [...selected];
+      NRAFB.updateContextLabels();
+      NRAFB.closePicker();
+    };
+    $search.on("input", render);
+    $list.on("change", "input", function () {
+      if (this.checked) selected.add(this.value); else selected.delete(this.value);
+      $count.text(`${selected.size} selected`);
+    });
+    $clear.on("click", () => { selected.clear(); render(); });
+    $apply.on("click", finish);
+    $close.on("click", NRAFB.closePicker);
+    $overlay.on("click", event => { if (event.target === $overlay[0]) NRAFB.closePicker(); });
+
+    if (isEntities) {
+      if (!NRAFB.state.homeAssistantId) {
+        $list.append($('<div class="nrafb-context-empty">').text("Select a Home Assistant connection first."));
+        return;
+      }
+      $.getJSON(`ai-flow-builder/home-assistant/${NRAFB.state.homeAssistantId}/entities`)
+        .done(snapshot => {
+          items = (snapshot.states || []).map(entity => ({
+            id: entity.entity_id,
+            label: entity.entity_id,
+            detail: `${entity.attributes && entity.attributes.friendly_name || ""}${entity.state ? ` · ${entity.state}` : ""}`,
+            search: `${entity.entity_id} ${entity.attributes && entity.attributes.friendly_name || ""} ${entity.state || ""}`.toLowerCase()
+          }));
+          render();
+        })
+        .fail(xhr => $list.append($('<div class="nrafb-context-empty">').text(xhr.responseJSON && xhr.responseJSON.error || "Could not load entities")));
+    } else {
+      const tabs = {};
+      NRAFB.listTabs().forEach(tab => { tabs[tab.id] = tab.label; });
+      const allNodes = RED.nodes.createCompleteNodeSet ? RED.nodes.createCompleteNodeSet() : RED.nodes.getNodes();
+      items = allNodes.filter(node => node && node.type !== "tab" && node.id).map(node => ({
+        id: node.id,
+        label: node.type,
+        detail: `${tabs[node.z] || node.z || ""} · ${node.id}`,
+        search: `${node.id} ${node.type} ${tabs[node.z] || ""}`.toLowerCase()
+      }));
+      render();
+    }
   };
 
   NRAFB.collectFlowContext = function () {
