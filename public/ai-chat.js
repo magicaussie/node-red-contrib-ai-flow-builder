@@ -88,6 +88,44 @@
     });
   };
 
+  NRAFB.listLocalHomeAssistant = function () {
+    const list = [];
+    RED.nodes.eachConfig(n => {
+      if (n.type === "ai-home-assistant-config") {
+        list.push({ id: n.id, label: n.name || n.baseUrl || "Home Assistant" });
+      }
+    });
+    return list;
+  };
+
+  NRAFB.openHomeAssistantEditor = function (targetId) {
+    if (!RED.editor || typeof RED.editor.editConfig !== "function") {
+      alert("Your Node-RED version does not expose RED.editor.editConfig.");
+      return;
+    }
+    const mode = targetId || "_ADD_";
+    if (mode !== "_ADD_" && !NRAFB.listLocalHomeAssistant().some(c => c.id === mode)) {
+      RED.notify("Select a Home Assistant connection first, or use + to add one.", "warning");
+      return;
+    }
+    const before = new Set(NRAFB.listLocalHomeAssistant().map(c => c.id));
+    RED.editor.editConfig("", "ai-home-assistant-config", mode);
+    const started = Date.now();
+    const poll = setInterval(() => {
+      const trayOpen = $(".red-ui-tray").length > 0;
+      if (!trayOpen || Date.now() - started > 60000) {
+        clearInterval(poll);
+        const now = NRAFB.listLocalHomeAssistant();
+        const added = now.find(c => !before.has(c.id));
+        NRAFB.refreshHomeAssistant();
+        if (RED.nodes.dirty()) {
+          RED.notify("Home Assistant connection changed — click Deploy to persist it.", "warning");
+        }
+        if (added) NRAFB.state.homeAssistantId = added.id;
+      }
+    }, 300);
+  };
+
   NRAFB.openProviderEditor = function (targetId) {
     if (!RED.editor || typeof RED.editor.editConfig !== "function") {
       alert("Your Node-RED version does not expose RED.editor.editConfig.");
@@ -194,6 +232,8 @@
     $root.on("change", ".nrafb-home-assistant", function () {
       NRAFB.state.homeAssistantId = $(this).val() || null;
     });
+    $root.on("click", ".nrafb-home-assistant-add", () => NRAFB.openHomeAssistantEditor("_ADD_"));
+    $root.on("click", ".nrafb-home-assistant-edit", () => NRAFB.openHomeAssistantEditor(NRAFB.state.homeAssistantId));
 
     $root.on("click", ".nrafb-provider-add", () => NRAFB.openProviderEditor("_ADD_"));
     $root.on("click", ".nrafb-provider-edit", () => NRAFB.openProviderEditor(NRAFB.state.providerId));
