@@ -1,6 +1,7 @@
 const assert = require("assert");
 const { sanitizeFlows, REDACTED } = require("../lib/sanitizer");
 const { buildSystemPrompt } = require("../lib/context-builder");
+const { compactStates, MAX_ENTITIES, MAX_CONTEXT_CHARS } = require("../lib/home-assistant");
 
 describe("sanitizeFlows", () => {
   it("strips top-level sensitive keys", () => {
@@ -58,5 +59,16 @@ describe("buildSystemPrompt", () => {
     assert.match(prompt, /light\.kitchen/);
     assert.match(prompt, /Kitchen/);
     assert.doesNotMatch(prompt, /token|Bearer|secret/i);
+  });
+
+  it("limits large Home Assistant snapshots", () => {
+    const result = compactStates(Array.from({ length: MAX_ENTITIES + 50 }, (_, index) => ({
+      entity_id: `sensor.test_${index}`,
+      state: "0",
+      attributes: { friendly_name: `Test ${index}` }
+    })));
+    assert.strictEqual(result.truncated, true);
+    assert.ok(result.states.length <= MAX_ENTITIES);
+    assert.ok(JSON.stringify(result.states).length <= MAX_CONTEXT_CHARS);
   });
 });

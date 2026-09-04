@@ -110,7 +110,11 @@ module.exports = function (RED) {
     let homeAssistantContext;
     if (homeAssistantId) {
       try {
-        homeAssistantContext = { states: await fetchHomeAssistantStates(homeAssistantNode) };
+        const snapshot = await fetchHomeAssistantStates(homeAssistantNode);
+        homeAssistantContext = {
+          states: snapshot.states,
+          note: snapshot.truncated ? "Snapshot truncated to keep the AI request within its context budget." : undefined
+        };
       } catch (e) {
         homeAssistantContext = { error: `Could not read Home Assistant entities: ${e.message}` };
       }
