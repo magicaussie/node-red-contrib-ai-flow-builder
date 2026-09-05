@@ -1,6 +1,6 @@
 {
   "name": "node-red-contrib-ai-flow-builder",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "description": "Node-RED sidebar chat panel powered by OpenAI / Anthropic that understands and edits your flows.",
   "keywords": [
     "node-red",

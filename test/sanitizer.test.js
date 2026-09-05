@@ -2,7 +2,7 @@ const assert = require("assert");
 const { sanitizeFlows, REDACTED } = require("../lib/sanitizer");
 const { buildSystemPrompt } = require("../lib/context-builder");
 const { compactStates, MAX_ENTITIES, MAX_CONTEXT_CHARS } = require("../lib/home-assistant");
-const { prepareConfig, fetchHomeAssistantServices, callHomeAssistantService } = require("../lib/home-assistant");
+const { prepareConfig, fetchHomeAssistantServices, callHomeAssistantService, listAllHomeAssistantEntities } = require("../lib/home-assistant");
 const { limitMessages, MAX_HISTORY_MESSAGES, MAX_MESSAGE_CHARS } = require("../lib/context-budget");
 
 describe("sanitizeFlows", () => {
@@ -157,6 +157,30 @@ describe("buildSystemPrompt", () => {
         { domain: "light", service: "turn_on", target: { entity_id: "light.kitchen" }, allowedServices: ["light.turn_on"], allowedEntities: ["light.kitchen"] }
       );
       assert.deepStrictEqual(result, { result: "ok" });
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  it("lists every entity for the picker, unlike the capped prompt snapshot", async () => {
+    const originalFetch = global.fetch;
+    const bulk = Array.from({ length: MAX_ENTITIES + 50 }, (_, index) => ({
+      entity_id: `sensor.filler_${index}`,
+      state: "0",
+      attributes: {}
+    }));
+    global.fetch = async () => ({
+      ok: true,
+      json: async () => [...bulk, { entity_id: "camera.front_door", state: "idle", attributes: { friendly_name: "Front Door" } }]
+    });
+    try {
+      const entities = await listAllHomeAssistantEntities({
+        baseUrl: "http://homeassistant.local:8123",
+        allowedHosts: "homeassistant.local",
+        credentials: { token: "x" }
+      });
+      assert.strictEqual(entities.length, bulk.length + 1);
+      assert.ok(entities.some(entity => entity.entity_id === "camera.front_door"));
     } finally {
       global.fetch = originalFetch;
     }

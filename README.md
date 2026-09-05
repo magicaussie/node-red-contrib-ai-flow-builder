@@ -2,7 +2,7 @@
 
 > AI chat sidebar for **Node-RED** — chat with **OpenAI** or **Anthropic** right inside the editor. The assistant sees your flow(s), reads installed palette modules, accepts images/files, and can **apply code changes directly to your canvas** — the active tab or any other tab.
 
-> Version: **0.1.12**
+> Version: **0.1.13**
 
 ---
 
@@ -14,6 +14,7 @@
 - 🎯 Per-conversation **entities**, **services**, and Node-RED **nodes** pickers — searchable popups, nothing exposed or callable until you pick it. Selections persist across the whole conversation and reset when you start or switch chats.
 - 🔒 Home Assistant actions require both the exact `domain.service` AND the target entity to be explicitly selected for that conversation — there is no static admin allowlist to maintain.
 - 🔗 Selected nodes automatically include the nodes connected by incoming and outgoing wires; full tabs are deduplicated before sending.
+- 📷 The entities picker always lists every Home Assistant entity (including domains like `camera`) — only the AI's prompt snapshot of your *selected* entities is size-limited, never the picker itself.
 - 🤖 **OpenAI** and **Anthropic** — pick any model available from your account (free-text field with live suggestions + a direct link to each provider's official model list).
 - 🔒 API keys live in a Node-RED **config node** (encrypted `flows_cred.json`). They never reach the browser.
 - 📎 Multipart upload of images, PDFs, JSON/text — with an in-chat viewer (lightbox + text pane + PDF embed).

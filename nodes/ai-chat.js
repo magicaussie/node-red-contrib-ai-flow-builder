@@ -5,7 +5,7 @@ const fs = require("fs").promises;
 const { Storage } = require("../lib/storage");
 const { streamProvider } = require("../lib/providers");
 const { buildSystemPrompt } = require("../lib/context-builder");
-const { fetchHomeAssistantStates, fetchHomeAssistantServices, callHomeAssistantService, prepareConfig } = require("../lib/home-assistant");
+const { fetchHomeAssistantStates, listAllHomeAssistantEntities, fetchHomeAssistantServices, callHomeAssistantService, prepareConfig } = require("../lib/home-assistant");
 const { limitMessages } = require("../lib/context-budget");
 
 module.exports = function (RED) {
@@ -57,8 +57,7 @@ module.exports = function (RED) {
     const node = RED.nodes.getNode(req.params.id);
     if (!node || node.type !== "ai-home-assistant-config") return res.status(400).json({ error: "invalid homeAssistantId" });
     try {
-      const snapshot = await fetchHomeAssistantStates(node);
-      res.json(snapshot);
+      res.json({ states: await listAllHomeAssistantEntities(node) });
     } catch (error) { res.status(400).json({ error: error.message }); }
   });
 
