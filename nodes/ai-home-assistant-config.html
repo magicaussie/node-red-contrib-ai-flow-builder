@@ -17,6 +17,7 @@
     },
     paletteLabel: "Home Assistant",
     oneditprepare: function () {
+      const nodeId = this.id;
       $("#nrafb-ha-test").on("click", async function () {
         const $button = $(this).prop("disabled", true).text("Testing...");
         try {
@@ -33,6 +34,82 @@
           RED.notify(response.ok ? `Connected. ${result.entityCount} entities found.` : result.error, response.ok ? "success" : "error");
         } catch (error) { RED.notify(`Connection test failed: ${error.message}`, "error"); }
         $button.prop("disabled", false).text("Test connection");
+      });
+
+      const $hidden = $("#node-config-input-allowedServices");
+      const $summary = $("#nrafb-ha-services-summary");
+      const updateSummary = () => {
+        const list = ($hidden.val() || "").split(",").map(v => v.trim()).filter(Boolean);
+        $summary.text(list.length ? `${list.length} service(s) allowed` : "No services allowed");
+      };
+      updateSummary();
+
+      $("#nrafb-ha-services-select").on("click", () => {
+        $(".nrafb-service-picker-overlay").remove();
+        const selected = new Set(($hidden.val() || "").split(",").map(v => v.trim()).filter(Boolean));
+        const $overlay = $("<div class='nrafb-service-picker-overlay'></div>");
+        const $panel = $("<div class='nrafb-context-picker'></div>");
+        const $search = $("<input type='search' class='nrafb-context-search'>").attr("placeholder", "Search by domain, service, description...");
+        const $list = $("<div class='nrafb-context-picker-list'></div>");
+        const $count = $("<span class='nrafb-context-picker-count'></span>");
+        const $apply = $("<button class='nrafb-btn nrafb-context-apply' type='button'>Use selected</button>");
+        const $clear = $("<button class='nrafb-btn nrafb-context-clear' type='button'>Clear</button>");
+        const $close = $("<button class='nrafb-btn nrafb-context-close' type='button' title='Close'>&times;</button>");
+        $panel.append($("<div class='nrafb-context-picker-header'></div>").append($("<strong>").text("Choose allowed Home Assistant services"), $close));
+        $panel.append($search, $("<div class='nrafb-context-picker-toolbar'></div>").append($count, $clear, $apply), $list);
+        $overlay.append($panel);
+        $("body").append($overlay);
+
+        let items = [];
+        const render = () => {
+          const query = String($search.val() || "").toLowerCase();
+          $list.empty();
+          const visible = items.filter(item => item.search.includes(query));
+          if (!visible.length) $list.append($("<div class='nrafb-context-empty'>").text(items.length ? "No matches" : "No services available"));
+          visible.forEach(item => {
+            const $row = $("<label class='nrafb-context-row'></label>");
+            const $checkbox = $("<input type='checkbox'>").val(item.id).prop("checked", selected.has(item.id));
+            $row.append($checkbox, $("<span>").append($("<strong>").text(item.id), $("<small>").text(item.detail)));
+            $list.append($row);
+          });
+          $count.text(`${selected.size} selected`);
+        };
+        $search.on("input", render);
+        $list.on("change", "input", function () {
+          if (this.checked) selected.add(this.value); else selected.delete(this.value);
+          $count.text(`${selected.size} selected`);
+        });
+        $clear.on("click", () => { selected.clear(); render(); });
+        $apply.on("click", () => {
+          $hidden.val([...selected].sort().join(","));
+          updateSummary();
+          $overlay.remove();
+        });
+        $close.on("click", () => $overlay.remove());
+        $overlay.on("click", event => { if (event.target === $overlay[0]) $overlay.remove(); });
+
+        fetch("ai-flow-builder/home-assistant/services", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: nodeId,
+            baseUrl: $("#node-config-input-baseUrl").val(),
+            token: $("#node-config-input-token").val(),
+            allowedHosts: $("#node-config-input-allowedHosts").val()
+          })
+        }).then(async response => {
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`);
+          items = (result.services || []).map(entry => ({
+            id: `${entry.domain}.${entry.service}`,
+            detail: entry.name && entry.name !== entry.service ? entry.name : (entry.description || ""),
+            search: `${entry.domain} ${entry.service} ${entry.name || ""} ${entry.description || ""}`.toLowerCase()
+          }));
+          render();
+        }).catch(error => {
+          $list.empty().append($("<div class='nrafb-context-empty'>").text(error.message));
+          $list.append($("<button class='nrafb-btn nrafb-context-retry' type='button'>Retry</button>").on("click", () => $("#nrafb-ha-services-select").trigger("click")));
+        });
       });
     }
   });
@@ -57,7 +134,9 @@
   </div>
   <div class="form-row">
     <label for="node-config-input-allowedServices"><i class="fa fa-check"></i> Allowed services</label>
-    <input type="text" id="node-config-input-allowedServices" placeholder="light.turn_on,light.turn_off" />
+    <input type="hidden" id="node-config-input-allowedServices" />
+    <span id="nrafb-ha-services-summary" style="margin-right:8px;"></span>
+    <button type="button" class="red-ui-button" id="nrafb-ha-services-select">Select services…</button>
   </div>
   <div class="form-row">
     <button type="button" class="red-ui-button" id="nrafb-ha-test">Test connection</button>
@@ -71,4 +150,5 @@
 <script type="text/html" data-help-name="ai-home-assistant-config">
   <p>Read-only Home Assistant connection used by the AI Chat sidebar to inspect entity states. Optionally restrict the snapshot to comma-separated domains such as <code>sensor,light,switch</code>.</p>
   <p>Create a long-lived access token in your Home Assistant profile. The token is stored encrypted by Node-RED and never sent to the AI provider.</p>
+  <p>Use <b>Select services…</b> to search and check the exact Home Assistant services the AI is allowed to call, instead of typing service names by hand.</p>
 </script>

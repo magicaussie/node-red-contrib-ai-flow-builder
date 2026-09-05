@@ -5,7 +5,7 @@ const fs = require("fs").promises;
 const { Storage } = require("../lib/storage");
 const { streamProvider } = require("../lib/providers");
 const { buildSystemPrompt } = require("../lib/context-builder");
-const { fetchHomeAssistantStates, callHomeAssistantService, prepareConfig } = require("../lib/home-assistant");
+const { fetchHomeAssistantStates, fetchHomeAssistantServices, callHomeAssistantService, prepareConfig } = require("../lib/home-assistant");
 const { limitMessages } = require("../lib/context-budget");
 
 module.exports = function (RED) {
@@ -59,6 +59,18 @@ module.exports = function (RED) {
     try {
       const snapshot = await fetchHomeAssistantStates(node);
       res.json(snapshot);
+    } catch (error) { res.status(400).json({ error: error.message }); }
+  });
+
+  RED.httpAdmin.post("/ai-flow-builder/home-assistant/services", writePerm, express.json(), async (req, res) => {
+    try {
+      const node = req.body && req.body.id ? RED.nodes.getNode(req.body.id) : null;
+      const config = (node && node.type === "ai-home-assistant-config") ? node : {
+        baseUrl: req.body && req.body.baseUrl,
+        allowedHosts: req.body && req.body.allowedHosts,
+        credentials: { token: req.body && req.body.token }
+      };
+      res.json({ services: await fetchHomeAssistantServices(config) });
     } catch (error) { res.status(400).json({ error: error.message }); }
   });
 

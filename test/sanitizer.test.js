@@ -2,7 +2,7 @@ const assert = require("assert");
 const { sanitizeFlows, REDACTED } = require("../lib/sanitizer");
 const { buildSystemPrompt } = require("../lib/context-builder");
 const { compactStates, MAX_ENTITIES, MAX_CONTEXT_CHARS } = require("../lib/home-assistant");
-const { prepareConfig } = require("../lib/home-assistant");
+const { prepareConfig, fetchHomeAssistantServices } = require("../lib/home-assistant");
 const { limitMessages, MAX_HISTORY_MESSAGES, MAX_MESSAGE_CHARS } = require("../lib/context-budget");
 
 describe("sanitizeFlows", () => {
@@ -103,5 +103,28 @@ describe("buildSystemPrompt", () => {
       allowedHosts: "homeassistant.local",
       credentials: { token: "x" }
     }), /allowlist/);
+  });
+
+  it("flattens Home Assistant services grouped by domain", async () => {
+    const originalFetch = global.fetch;
+    global.fetch = async () => ({
+      ok: true,
+      json: async () => ([
+        { domain: "light", services: { turn_on: { name: "Turn on", description: "Turn on a light" } } },
+        { domain: "switch", services: { turn_off: {} } }
+      ])
+    });
+    try {
+      const services = await fetchHomeAssistantServices({
+        baseUrl: "http://homeassistant.local:8123",
+        allowedHosts: "homeassistant.local",
+        credentials: { token: "x" }
+      });
+      assert.deepStrictEqual(services.map(s => `${s.domain}.${s.service}`), ["light.turn_on", "switch.turn_off"]);
+      assert.strictEqual(services[0].name, "Turn on");
+      assert.strictEqual(services[1].name, "turn_off");
+    } finally {
+      global.fetch = originalFetch;
+    }
   });
 });

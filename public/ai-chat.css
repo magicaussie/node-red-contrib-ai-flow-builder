@@ -172,7 +172,8 @@
   cursor: pointer;
 }
 .nrafb-tabpicker-panel label:hover { background: var(--red-ui-secondary-background, #f3f3f3); }
-.nrafb-context-picker-overlay {
+.nrafb-context-picker-overlay,
+.nrafb-service-picker-overlay {
   position: fixed;
   inset: 0;
   z-index: 21000;
