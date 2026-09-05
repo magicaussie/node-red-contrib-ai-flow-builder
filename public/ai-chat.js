@@ -73,7 +73,9 @@
     const previous = NRAFB.state.homeAssistantId;
     $sel.empty().append(`<option value="">HA entities off</option>`);
     (list || []).forEach(c => $sel.append(`<option value="${c.id}">${$('<div>').text(c.label).html()}</option>`));
-    NRAFB.state.homeAssistantId = list && list.some(c => c.id === previous) ? previous : null;
+    const retained = list && list.find(c => c.id === previous);
+    const selected = retained || (!previous && list && list.length === 1 ? list[0] : null);
+    NRAFB.state.homeAssistantId = selected ? selected.id : null;
     $sel.val(NRAFB.state.homeAssistantId || "");
   };
 
@@ -467,7 +469,7 @@
 
     if (isEntities) {
       if (!NRAFB.state.homeAssistantId) {
-        $list.append($('<div class="nrafb-context-empty">').text("Select a Home Assistant connection first."));
+        $list.append($('<div class="nrafb-context-empty">').text("Select a Home Assistant connection first, then reopen this picker."));
         return;
       }
       $.getJSON(`ai-flow-builder/home-assistant/${NRAFB.state.homeAssistantId}/entities`)
@@ -480,7 +482,10 @@
           }));
           render();
         })
-        .fail(xhr => $list.append($('<div class="nrafb-context-empty">').text(xhr.responseJSON && xhr.responseJSON.error || "Could not load entities")));
+        .fail(xhr => {
+          $list.empty().append($('<div class="nrafb-context-empty">').text(xhr.responseJSON && xhr.responseJSON.error || "Could not load entities"));
+          $list.append($('<button class="nrafb-btn nrafb-context-retry">Retry</button>').on("click", () => NRAFB.openContextPicker("entities")));
+        });
     } else {
       const tabs = {};
       NRAFB.listTabs().forEach(tab => { tabs[tab.id] = tab.label; });
