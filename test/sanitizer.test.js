@@ -2,7 +2,7 @@ const assert = require("assert");
 const { sanitizeFlows, REDACTED } = require("../lib/sanitizer");
 const { buildSystemPrompt } = require("../lib/context-builder");
 const { compactStates, MAX_ENTITIES, MAX_CONTEXT_CHARS } = require("../lib/home-assistant");
-const { prepareConfig, fetchHomeAssistantServices } = require("../lib/home-assistant");
+const { prepareConfig, fetchHomeAssistantServices, callHomeAssistantService } = require("../lib/home-assistant");
 const { limitMessages, MAX_HISTORY_MESSAGES, MAX_MESSAGE_CHARS } = require("../lib/context-budget");
 
 describe("sanitizeFlows", () => {
@@ -123,6 +123,40 @@ describe("buildSystemPrompt", () => {
       assert.deepStrictEqual(services.map(s => `${s.domain}.${s.service}`), ["light.turn_on", "switch.turn_off"]);
       assert.strictEqual(services[0].name, "Turn on");
       assert.strictEqual(services[1].name, "turn_off");
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  it("blocks Home Assistant service calls not selected for the conversation", async () => {
+    await assert.rejects(
+      () => callHomeAssistantService(
+        { baseUrl: "http://homeassistant.local:8123", allowedHosts: "homeassistant.local", credentials: { token: "x" } },
+        { domain: "light", service: "turn_on", target: { entity_id: "light.kitchen" }, allowedServices: [], allowedEntities: ["light.kitchen"] }
+      ),
+      /not selected/
+    );
+  });
+
+  it("blocks Home Assistant service calls targeting an unselected entity", async () => {
+    await assert.rejects(
+      () => callHomeAssistantService(
+        { baseUrl: "http://homeassistant.local:8123", allowedHosts: "homeassistant.local", credentials: { token: "x" } },
+        { domain: "light", service: "turn_on", target: { entity_id: "light.bedroom" }, allowedServices: ["light.turn_on"], allowedEntities: ["light.kitchen"] }
+      ),
+      /Entity not selected/
+    );
+  });
+
+  it("allows Home Assistant service calls when both service and entity are selected", async () => {
+    const originalFetch = global.fetch;
+    global.fetch = async () => ({ ok: true, json: async () => ({ result: "ok" }) });
+    try {
+      const result = await callHomeAssistantService(
+        { baseUrl: "http://homeassistant.local:8123", allowedHosts: "homeassistant.local", credentials: { token: "x" } },
+        { domain: "light", service: "turn_on", target: { entity_id: "light.kitchen" }, allowedServices: ["light.turn_on"], allowedEntities: ["light.kitchen"] }
+      );
+      assert.deepStrictEqual(result, { result: "ok" });
     } finally {
       global.fetch = originalFetch;
     }

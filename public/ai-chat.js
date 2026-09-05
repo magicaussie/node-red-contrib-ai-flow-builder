@@ -8,6 +8,7 @@
       providerId: null,
       homeAssistantId: null,
       entityIds: [],
+      serviceIds: [],
       nodeIds: [],
       extraTabIds: [],
       pendingAttachments: []
@@ -169,6 +170,7 @@
   };
 
   NRAFB.loadConversation = function (id) {
+    NRAFB.resetHomeAssistantContext();
     if (!id) {
       NRAFB.state.conversationId = null;
       NRAFB.root.find(".nrafb-messages").empty();
@@ -202,6 +204,7 @@
       contentType: "application/json",
       data: JSON.stringify({ title: "New chat" })
     }).done(conv => {
+      NRAFB.resetHomeAssistantContext();
       NRAFB.state.conversationId = conv.id;
       NRAFB.refreshConversations();
       NRAFB.root.find(".nrafb-messages").empty();
@@ -259,6 +262,7 @@
     $root.on("click", ".nrafb-home-assistant-add", () => NRAFB.openHomeAssistantEditor("_ADD_"));
     $root.on("click", ".nrafb-home-assistant-edit", () => NRAFB.openHomeAssistantEditor(NRAFB.state.homeAssistantId));
     $root.on("click", ".nrafb-entitypicker", () => NRAFB.openContextPicker("entities"));
+    $root.on("click", ".nrafb-servicepicker", () => NRAFB.openContextPicker("services"));
     $root.on("click", ".nrafb-nodepicker", () => NRAFB.openContextPicker("nodes"));
 
     $root.on("click", ".nrafb-provider-add", () => NRAFB.openProviderEditor("_ADD_"));
@@ -413,26 +417,41 @@
 
   NRAFB.updateContextLabels = function () {
     NRAFB.root.find(".nrafb-entitypicker-label").text(NRAFB.state.entityIds.length ? `entities (${NRAFB.state.entityIds.length})` : "entities");
+    NRAFB.root.find(".nrafb-servicepicker-label").text(NRAFB.state.serviceIds.length ? `services (${NRAFB.state.serviceIds.length})` : "services");
     NRAFB.root.find(".nrafb-nodepicker-label").text(NRAFB.state.nodeIds.length ? `nodes (${NRAFB.state.nodeIds.length})` : "nodes");
+  };
+
+  // Selections are per-conversation only — cleared whenever a chat is created or switched.
+  NRAFB.resetHomeAssistantContext = function () {
+    NRAFB.state.entityIds = [];
+    NRAFB.state.serviceIds = [];
+    NRAFB.state.nodeIds = [];
+    if (NRAFB.root) NRAFB.updateContextLabels();
   };
 
   NRAFB.closePicker = function () {
     $(".nrafb-context-picker-overlay").remove();
   };
 
+  NRAFB.CONTEXT_PICKER_KINDS = {
+    entities: { title: "Choose Home Assistant entities", placeholder: "Search by entity, name, domain...", stateKey: "entityIds" },
+    services: { title: "Choose allowed Home Assistant services", placeholder: "Search by domain, service, description...", stateKey: "serviceIds" },
+    nodes: { title: "Choose Node-RED nodes", placeholder: "Search by node ID, type, tab...", stateKey: "nodeIds" }
+  };
+
   NRAFB.openContextPicker = function (kind) {
     NRAFB.closePicker();
-    const isEntities = kind === "entities";
-    const selected = new Set(isEntities ? NRAFB.state.entityIds : NRAFB.state.nodeIds);
+    const spec = NRAFB.CONTEXT_PICKER_KINDS[kind];
+    const selected = new Set(NRAFB.state[spec.stateKey]);
     const $overlay = $("<div class='nrafb-context-picker-overlay'></div>");
     const $panel = $("<div class='nrafb-context-picker'></div>");
-    const $search = $("<input type='search' class='nrafb-context-search'>").attr("placeholder", isEntities ? "Search by entity, name, domain..." : "Search by node ID, type, tab...");
+    const $search = $("<input type='search' class='nrafb-context-search'>").attr("placeholder", spec.placeholder);
     const $list = $("<div class='nrafb-context-picker-list'></div>");
     const $count = $("<span class='nrafb-context-picker-count'></span>");
     const $apply = $("<button class='nrafb-btn nrafb-context-apply'>Use selected</button>");
     const $clear = $("<button class='nrafb-btn nrafb-context-clear'>Clear</button>");
     const $close = $("<button class='nrafb-btn nrafb-context-close' title='Close'>×</button>");
-    $panel.append($("<div class='nrafb-context-picker-header'></div>").append($('<strong>').text(isEntities ? "Choose Home Assistant entities" : "Choose Node-RED nodes"), $close));
+    $panel.append($("<div class='nrafb-context-picker-header'></div>").append($('<strong>').text(spec.title), $close));
     $panel.append($search, $("<div class='nrafb-context-picker-toolbar'></div>").append($count, $clear, $apply), $list);
     $overlay.append($panel);
     $("body").append($overlay);
@@ -452,8 +471,7 @@
       $count.text(`${selected.size} selected`);
     };
     const finish = () => {
-      if (isEntities) NRAFB.state.entityIds = [...selected];
-      else NRAFB.state.nodeIds = [...selected];
+      NRAFB.state[spec.stateKey] = [...selected];
       NRAFB.updateContextLabels();
       NRAFB.closePicker();
     };
@@ -467,11 +485,12 @@
     $close.on("click", NRAFB.closePicker);
     $overlay.on("click", event => { if (event.target === $overlay[0]) NRAFB.closePicker(); });
 
-    if (isEntities) {
-      if (!NRAFB.state.homeAssistantId) {
-        $list.append($('<div class="nrafb-context-empty">').text("Select a Home Assistant connection first, then reopen this picker."));
-        return;
-      }
+    if (!NRAFB.state.homeAssistantId && (kind === "entities" || kind === "services")) {
+      $list.append($('<div class="nrafb-context-empty">').text("Select a Home Assistant connection first, then reopen this picker."));
+      return;
+    }
+
+    if (kind === "entities") {
       $.getJSON(`ai-flow-builder/home-assistant/${NRAFB.state.homeAssistantId}/entities`)
         .done(snapshot => {
           items = (snapshot.states || []).map(entity => ({
@@ -486,6 +505,25 @@
           $list.empty().append($('<div class="nrafb-context-empty">').text(xhr.responseJSON && xhr.responseJSON.error || "Could not load entities"));
           $list.append($('<button class="nrafb-btn nrafb-context-retry">Retry</button>').on("click", () => NRAFB.openContextPicker("entities")));
         });
+    } else if (kind === "services") {
+      fetch("ai-flow-builder/home-assistant/services", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: NRAFB.state.homeAssistantId })
+      }).then(async response => {
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`);
+        items = (result.services || []).map(entry => ({
+          id: `${entry.domain}.${entry.service}`,
+          label: `${entry.domain}.${entry.service}`,
+          detail: entry.name && entry.name !== entry.service ? entry.name : (entry.description || ""),
+          search: `${entry.domain} ${entry.service} ${entry.name || ""} ${entry.description || ""}`.toLowerCase()
+        }));
+        render();
+      }).catch(error => {
+        $list.empty().append($('<div class="nrafb-context-empty">').text(error.message));
+        $list.append($('<button class="nrafb-btn nrafb-context-retry">Retry</button>').on("click", () => NRAFB.openContextPicker("services")));
+      });
     } else {
       const tabs = {};
       NRAFB.listTabs().forEach(tab => { tabs[tab.id] = tab.label; });
@@ -499,6 +537,7 @@
       render();
     }
   };
+
 
   NRAFB.getAllFlowNodes = function () {
     const byId = new Map();
@@ -577,6 +616,7 @@
       activeTabId,
       extraTabIds,
       entityIds: NRAFB.state.entityIds,
+      serviceIds: NRAFB.state.serviceIds,
       nodeIds: selectedNodeIds,
       flowJson,
       palette

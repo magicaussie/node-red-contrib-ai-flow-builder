@@ -2,7 +2,7 @@
 
 > AI chat sidebar for **Node-RED** — chat with **OpenAI** or **Anthropic** right inside the editor. The assistant sees your flow(s), reads installed palette modules, accepts images/files, and can **apply code changes directly to your canvas** — the active tab or any other tab.
 
-> Version: **0.1.11**
+> Version: **0.1.12**
 
 ---
 
@@ -10,10 +10,10 @@
 
 - 💬 Right-sidebar chat with streaming responses (SSE).
 - 🏠 Optional Home Assistant entity context from a read-only `/api/states` snapshot.
-- ⚡ Bounded context windows, filtered Home Assistant domains, attachment limits, and Apply-all canvas updates.
-- 🎯 Per-message entity and Node-RED node context lists, allowlisted Home Assistant actions, chat export, and cleanup.
+- ⚡ Bounded context windows, attachment limits, and Apply-all canvas updates.
+- 🎯 Per-conversation **entities**, **services**, and Node-RED **nodes** pickers — searchable popups, nothing exposed or callable until you pick it. Selections persist across the whole conversation and reset when you start or switch chats.
+- 🔒 Home Assistant actions require both the exact `domain.service` AND the target entity to be explicitly selected for that conversation — there is no static admin allowlist to maintain.
 - 🔗 Selected nodes automatically include the nodes connected by incoming and outgoing wires; full tabs are deduplicated before sending.
-- 🧰 Searchable "Select services…" picker on the Home Assistant config node — no more typing exact `domain.service` names by hand.
 - 🤖 **OpenAI** and **Anthropic** — pick any model available from your account (free-text field with live suggestions + a direct link to each provider's official model list).
 - 🔒 API keys live in a Node-RED **config node** (encrypted `flows_cred.json`). They never reach the browser.
 - 📎 Multipart upload of images, PDFs, JSON/text — with an in-chat viewer (lightbox + text pane + PDF embed).
@@ -71,13 +71,21 @@ node-red-restart        # or however you run your instance
 
 ### What the AI sees
 
-To include Home Assistant entities, add an `ai-home-assistant-config` node, enter the Home Assistant base URL and a long-lived access token, optionally restrict Domains such as `sensor,light,switch`, and deploy. Select the connection in the sidebar dropdown. The token stays encrypted in Node-RED; only entity IDs, states, friendly names, units, device classes, and timestamps are included in the prompt.
+To include Home Assistant entities, add an `ai-home-assistant-config` node, enter the Home Assistant base URL, a long-lived access token, and an optional allowed-hosts value, then deploy. Select the connection in the sidebar dropdown.
+
+Nothing about your Home Assistant instance is visible or callable by default. For each conversation, use the sidebar's searchable popups to choose:
+
+- **entities** — which entity states are included in the prompt (only these are sent — entity IDs, states, friendly names, units, device classes, timestamps).
+- **services** — which exact `domain.service` actions the AI is allowed to propose (e.g. `light.turn_on`). Nothing is callable until you pick it here.
+- **nodes** — which Node-RED nodes (plus everything they're wired to) are included, instead of the whole active tab.
+
+These three selections persist for the whole conversation and are cleared automatically when you start a new chat or switch to a different one — they never carry over between conversations. When the AI proposes a Home Assistant action, it's only accepted if both the service and the target entity were explicitly selected; you'll also still get a confirmation popup before it actually runs.
 
 Every message sends, as system context, a sanitized snapshot of:
 
-- the active tab + any extra tabs you ticked in the multi-select,
+- the active tab + any extra tabs you ticked in the multi-select (or only the nodes you picked via the **nodes** popup, plus everything connected to them),
 - the full catalog of registered node types, grouped by module, with the core modules flagged — so the AI knows exactly what's usable in this installation (and what isn't).
-- optionally, a read-only Home Assistant entity snapshot selected from the sidebar dropdown.
+- optionally, the Home Assistant entities you selected via the **entities** popup.
 
 Large contexts are bounded automatically: recent conversation history, flow JSON, palette metadata, text attachments, images, PDFs, and Home Assistant entities are capped before a provider request is made.
 

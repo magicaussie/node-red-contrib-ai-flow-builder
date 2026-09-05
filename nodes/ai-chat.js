@@ -78,8 +78,11 @@ module.exports = function (RED) {
     const node = RED.nodes.getNode(req.params.id);
     if (!node || node.type !== "ai-home-assistant-config") return res.status(400).json({ error: "invalid homeAssistantId" });
     try {
-      const { domain, service, target, data } = req.body || {};
-      res.json({ ok: true, result: await callHomeAssistantService(node, { domain, service, target, data }) });
+      const { domain, service, target, data, entityIds, serviceIds } = req.body || {};
+      res.json({
+        ok: true,
+        result: await callHomeAssistantService(node, { domain, service, target, data, allowedEntities: entityIds, allowedServices: serviceIds })
+      });
     } catch (error) { res.status(400).json({ error: error.message }); }
   });
 
