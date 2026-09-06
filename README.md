@@ -2,7 +2,7 @@
 
 > AI chat sidebar for **Node-RED** — chat with **OpenAI** or **Anthropic** right inside the editor. The assistant sees your flow(s), reads installed palette modules, accepts images/files, and can **apply code changes directly to your canvas** — the active tab or any other tab.
 
-> Version: **0.1.14**
+> Version: **0.1.15**
 
 ---
 
@@ -20,6 +20,7 @@
 - ✅ Large or risky changes (many new nodes, unknown types, many edited properties, unknown services) require an extra confirmation click; small changes apply immediately.
 - 🔁 **Apply all** now applies an entire multi-block AI response as one atomic change with a single combined undo step, instead of leaving a partial canvas state.
 - 📈 The Preview dialog renders an actual box-and-arrow wiring diagram of the proposed change, not just a text summary.
+- 🐞 The AI can propose adding temporary `debug` nodes for testing; click **test capture** in the sidebar, deploy, trigger the flow, and the captured runtime output is sent back to the AI in your next message so it can confirm the flow actually works instead of only reviewing its structure.
 - 🤖 **OpenAI** and **Anthropic** — pick any model available from your account (free-text field with live suggestions + a direct link to each provider's official model list).
 - 🔒 API keys live in a Node-RED **config node** (encrypted `flows_cred.json`). They never reach the browser.
 - 📎 Multipart upload of images, PDFs, JSON/text — with an in-chat viewer (lightbox + text pane + PDF embed).
@@ -124,6 +125,18 @@ Every block has its own **Copy** / **Preview** / **Apply** buttons:
 - If an apply block references a node ID that no longer exists (e.g. you deleted it), the apply will report "node not found" in a toast — harmless.
 - Ask the AI to **only produce a `json:connect` block** when you just want to wire two nodes without recreating them from scratch.
 - `Ctrl+Z` undoes the entire apply as a single operation.
+
+### Testing a flow
+
+The AI has no way to run your flow itself — it can only read the flow JSON. To actually verify behavior instead of guessing from structure:
+
+1. Ask something like *"add debug nodes where needed and check whether this flow is working"*. The AI will propose `debug` nodes at the relevant points via a normal `json:flow`/`json:connect` block.
+2. **Apply**, then **Deploy** — debug nodes only emit output once deployed.
+3. Click **test capture** in the sidebar context row (turns red while active).
+4. Trigger the flow — click an inject node's button on the canvas, or cause the real-world event (flip a switch, send the message, etc.).
+5. Click **test capture** again to stop. Captured entries show as removable chips; click × to drop any you don't want to share.
+6. Send a follow-up message (e.g. *"here's what happened, is it working?"*). The captured debug output is included as a "# Captured debug output" section and cleared after sending.
+7. Ask the AI to remove the temporary debug nodes once you're done via a `json:delete` block.
 
 ### Example prompts
 

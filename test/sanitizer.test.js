@@ -89,7 +89,7 @@ describe("buildSystemPrompt", () => {
       flowJson: [{ type: "tab", id: "tab" }, { id: "keep", type: "inject" }, { id: "drop", type: "debug" }]
     });
     assert.match(prompt, /keep/);
-    assert.doesNotMatch(prompt, /debug/);
+    assert.doesNotMatch(prompt, /"drop"/);
   });
 
   it("includes real node type schemas so the AI stops guessing property names", () => {
@@ -98,6 +98,14 @@ describe("buildSystemPrompt", () => {
     });
     assert.match(prompt, /Known node type schemas/);
     assert.match(prompt, /template: name, template \(required: template\)/);
+  });
+
+  it("includes captured runtime debug output for the AI to review after a test run", () => {
+    const prompt = buildSystemPrompt({
+      debugCapture: [{ name: "kitchen light debug", topic: "light.kitchen", payload: "on" }]
+    });
+    assert.match(prompt, /Captured debug output/);
+    assert.match(prompt, /\[kitchen light debug\] topic=light\.kitchen: on/);
   });
 
   it("enforces the Home Assistant host allowlist", () => {

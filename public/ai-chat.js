@@ -12,6 +12,8 @@
       nodeIds: [],
       extraTabIds: [],
       pendingAttachments: [],
+      pendingDebugCapture: [],
+      debugCaptureActive: false,
       autoEnableNewNodes: false
     }
   };
@@ -282,6 +284,10 @@
     $root.on("change", ".nrafb-autoenable-input", function () {
       NRAFB.state.autoEnableNewNodes = this.checked;
     });
+    $root.on("click", ".nrafb-debug-capture", () => {
+      if (NRAFB.state.debugCaptureActive) NRAFB.stopDebugCapture();
+      else NRAFB.startDebugCapture();
+    });
 
     $root.on("click", ".nrafb-tabpicker", NRAFB.openTabPicker);
 
@@ -344,6 +350,82 @@
       : `<i class="fa fa-file"></i>`;
     const $chip = $(`<span class="nrafb-attachment-chip" data-url="${url}" data-mime="${att.mimeType}" data-name="${$("<div>").text(att.originalName).html()}">${preview}<span>${$("<div>").text(att.originalName).html()}</span></span>`);
     return $chip;
+  };
+
+  const DEBUG_CAPTURE_MAX_ENTRIES = 50;
+  const DEBUG_CAPTURE_MAX_PAYLOAD_CHARS = 500;
+
+  NRAFB.formatDebugPayload = function (value) {
+    let text;
+    try { text = typeof value === "string" ? value : JSON.stringify(value); }
+    catch (_) { text = String(value); }
+    text = String(text == null ? "" : text);
+    return text.length > DEBUG_CAPTURE_MAX_PAYLOAD_CHARS ? `${text.slice(0, DEBUG_CAPTURE_MAX_PAYLOAD_CHARS)}\u2026[truncated]` : text;
+  };
+
+  NRAFB.onDebugCommsMessage = function (topic, msg) {
+    if (!NRAFB.state.debugCaptureActive || !msg) return;
+    NRAFB.state.pendingDebugCapture.push({
+      nodeId: msg.id,
+      name: msg.name || "",
+      topic: msg.topic || "",
+      payload: NRAFB.formatDebugPayload(msg.msg),
+      ts: Date.now()
+    });
+    if (NRAFB.state.pendingDebugCapture.length > DEBUG_CAPTURE_MAX_ENTRIES) {
+      NRAFB.state.pendingDebugCapture = NRAFB.state.pendingDebugCapture.slice(-DEBUG_CAPTURE_MAX_ENTRIES);
+    }
+    NRAFB.renderDebugCapture();
+  };
+
+  NRAFB.startDebugCapture = function () {
+    if (!RED.comms || typeof RED.comms.subscribe !== "function") {
+      NRAFB.appendSystemMessage("This Node-RED version does not expose the debug comms channel needed to capture test output.");
+      return;
+    }
+    NRAFB.state.debugCaptureActive = true;
+    NRAFB.state.pendingDebugCapture = [];
+    RED.comms.subscribe("debug", NRAFB.onDebugCommsMessage);
+    NRAFB.renderDebugCapture();
+  };
+
+  NRAFB.stopDebugCapture = function () {
+    NRAFB.state.debugCaptureActive = false;
+    if (RED.comms && typeof RED.comms.unsubscribe === "function") {
+      RED.comms.unsubscribe("debug", NRAFB.onDebugCommsMessage);
+    }
+    NRAFB.renderDebugCapture();
+  };
+
+  NRAFB.clearDebugCapture = function () {
+    NRAFB.state.pendingDebugCapture = [];
+    NRAFB.renderDebugCapture();
+  };
+
+  NRAFB.renderDebugCapture = function () {
+    const $btn = NRAFB.root.find(".nrafb-debug-capture");
+    const count = NRAFB.state.pendingDebugCapture.length;
+    $btn.toggleClass("active", NRAFB.state.debugCaptureActive);
+    $btn.find(".nrafb-debug-capture-label").text(
+      NRAFB.state.debugCaptureActive ? `capturing\u2026 (${count})` : (count ? `test output (${count})` : "test capture")
+    );
+    let $wrap = NRAFB.root.find(".nrafb-debug-capture-list");
+    if (!count) { $wrap.remove(); return; }
+    if (!$wrap.length) {
+      $wrap = $(`<div class="nrafb-attachments nrafb-debug-capture-list"></div>`);
+      NRAFB.root.find(".nrafb-context").append($wrap);
+    }
+    $wrap.empty();
+    NRAFB.state.pendingDebugCapture.forEach((entry, index) => {
+      const label = entry.name || entry.nodeId || "debug";
+      const $chip = $(`<span class="nrafb-attachment-chip" title="${$("<div>").text(entry.payload).html()}"><i class="fa fa-bug"></i><span>${$("<div>").text(label).html()}</span></span>`);
+      $chip.append($(`<a href="#" class="nrafb-att-remove" title="remove">\u00d7</a>`).on("click", e => {
+        e.preventDefault();
+        NRAFB.state.pendingDebugCapture.splice(index, 1);
+        NRAFB.renderDebugCapture();
+      }));
+      $wrap.append($chip);
+    });
   };
 
   NRAFB.openAttachmentViewer = function (url, mime, name) {
@@ -640,7 +722,8 @@
       nodeIds: selectedNodeIds,
       flowJson,
       palette,
-      typeSchemas
+      typeSchemas,
+      debugCapture: NRAFB.state.pendingDebugCapture
     };
   };
 
@@ -681,6 +764,7 @@
         throw new Error(detail);
       }
       NRAFB.state.pendingAttachments = [];
+      NRAFB.clearDebugCapture();
       const reader = resp.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";

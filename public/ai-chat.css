@@ -100,6 +100,7 @@
   cursor: pointer;
   user-select: none;
 }
+.nrafb-debug-capture.active { background: #c33; color: #fff; border-color: #a22; }
 .nrafb-root textarea.nrafb-input {
   display: block !important;
   width: 100% !important;
