@@ -35,6 +35,9 @@
             <button class="nrafb-btn nrafb-nodepicker" title="Choose Node-RED nodes"><i class="fa fa-sitemap"></i> <span class="nrafb-nodepicker-label">nodes</span></button>
             <button class="nrafb-btn nrafb-attach" title="Attach file"><i class="fa fa-paperclip"></i></button>
             <input type="file" class="nrafb-file" multiple hidden />
+            <label class="nrafb-autoenable" title="New nodes from AI responses are imported disabled by default so nothing runs until you review them">
+              <input type="checkbox" class="nrafb-autoenable-input" /> enable new nodes immediately
+            </label>
           </div>
           <textarea class="nrafb-input" rows="3" placeholder="Ask the AI…"></textarea>
           <button class="nrafb-btn nrafb-send" title="Send (Ctrl+Enter)"><i class="fa fa-paper-plane"></i></button>
@@ -54,6 +57,7 @@
 
     // Load shared UI logic
     $.when(
+      $.getScript("ai-flow-builder/static/flow-planner.js"),
       $.getScript("ai-flow-builder/static/message-renderer.js"),
       $.getScript("ai-flow-builder/static/apply-handlers.js"),
       $.getScript("ai-flow-builder/static/ai-chat.js")

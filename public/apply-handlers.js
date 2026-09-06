@@ -50,7 +50,19 @@
     return clean;
   }
 
-  function applyFlow(tabTarget, nodesJson) {
+  // When set, apply* functions accumulate history entries here instead of pushing them
+  // immediately, so applyBatch() can combine an entire AI response into one undo step.
+  let batchChanges = null;
+
+  function commitHistory(entry) {
+    if (!entry) return;
+    if (batchChanges) { batchChanges.push(entry); return; }
+    if (RED.history && typeof RED.history.push === "function") {
+      RED.history.push({ ...entry, dirty: RED.nodes.dirty() });
+    }
+  }
+
+  function applyFlow(tabTarget, nodesJson, options = {}) {
     let incoming = ensureArray(sanitizeIncoming(nodesJson));
     let tabId = tabTarget;
 
@@ -79,6 +91,25 @@
     // Reassign z on every node so imports land in the target tab.
     incoming.forEach(n => { n.z = tabId; });
 
+    // Position by wire dependency instead of trusting AI-guessed x/y, avoiding overlap
+    // with whatever already exists on the target tab.
+    const planner = window.NRAFB_PLANNER;
+    if (planner) {
+      const existingNodes = [];
+      RED.nodes.eachNode(n => { if (n.z === tabId) existingNodes.push({ x: n.x, y: n.y }); });
+      const laidOut = planner.computeLayeredLayout(incoming, { existingNodes });
+      const byId = new Map(laidOut.map(n => [n.id, n]));
+      incoming.forEach(n => {
+        const placed = byId.get(n.id);
+        if (placed) { n.x = placed.x; n.y = placed.y; }
+      });
+    }
+
+    // Imported nodes stay disabled until the user reviews and enables them, unless
+    // they've opted into immediate activation via the sidebar toggle.
+    const autoEnable = !!(window.NRAFB && window.NRAFB.state.autoEnableNewNodes);
+    if (!autoEnable) incoming.forEach(n => { n.d = true; });
+
     try {
       const imported = RED.nodes.import(incoming, { generateIds: true, addFlow: false });
       const importedNodes = imported.nodes || [];
@@ -86,21 +117,14 @@
       // Make the target tab the active one so the user sees the result immediately.
       if (RED.workspaces.active() !== tabId) RED.workspaces.show(tabId);
 
-      // Push into history so Ctrl+Z undoes the whole batch as one op.
-      if (RED.history && typeof RED.history.push === "function" && importedNodes.length) {
-        RED.history.push({
-          t: "add",
-          nodes: importedNodes.map(n => n.id),
-          dirty: RED.nodes.dirty()
-        });
-      }
+      commitHistory(importedNodes.length ? { t: "add", nodes: importedNodes.map(n => n.id) } : null);
 
       // Notify the editor that new nodes exist, then force a full redraw.
       importedNodes.forEach(n => RED.events.emit("nodes:add", n));
       RED.nodes.dirty(true);
       if (RED.view && typeof RED.view.redraw === "function") RED.view.redraw(true);
 
-      RED.notify(`Applied ${importedNodes.length} node(s).`, "success");
+      RED.notify(`Applied ${importedNodes.length} node(s)${autoEnable ? "" : " (disabled — review then enable + deploy)"}.`, "success");
     } catch (e) {
       RED.notify(`Apply failed: ${e.message}`, "error");
     }
@@ -116,9 +140,7 @@
       changes[k] = node[k];
       node[k] = patch[k];
     });
-    if (RED.history && typeof RED.history.push === "function" && Object.keys(changes).length) {
-      RED.history.push({ t: "edit", node, changes, dirty: RED.nodes.dirty() });
-    }
+    commitHistory(Object.keys(changes).length ? { t: "edit", node, changes } : null);
     node.changed = true;
     RED.nodes.dirty(true);
     RED.events.emit("nodes:change", node);
@@ -179,9 +201,7 @@
         removedTabs.push(tab);
       }
     });
-    if (RED.history && typeof RED.history.push === "function" && (removed.length || removedTabs.length)) {
-      RED.history.push({ t: "delete", nodes: removed, workspaces: removedTabs, links: wireChanges, dirty: RED.nodes.dirty() });
-    }
+    commitHistory((removed.length || removedTabs.length) ? { t: "delete", nodes: removed, workspaces: removedTabs, links: wireChanges } : null);
     removed.forEach(n => RED.events.emit("nodes:remove", n));
     RED.nodes.dirty(true);
     if (RED.view && typeof RED.view.redraw === "function") RED.view.redraw(true);
@@ -217,9 +237,7 @@
       n.dirty = true;
       RED.events.emit("nodes:change", n);
     });
-    if (addedLinks.length && RED.history && typeof RED.history.push === "function") {
-      RED.history.push({ t: "add", links: addedLinks, dirty: RED.nodes.dirty() });
-    }
+    commitHistory(addedLinks.length ? { t: "add", links: addedLinks } : null);
     RED.nodes.dirty(true);
     if (RED.view && typeof RED.view.redraw === "function") RED.view.redraw(true);
     const msgs = [`Added ${addedLinks.length} wire(s)`];
@@ -282,9 +300,7 @@
       n.dirty = true;
       RED.events.emit("nodes:change", n);
     });
-    if (removedLinks.length && RED.history && typeof RED.history.push === "function") {
-      RED.history.push({ t: "delete", links: removedLinks, dirty: RED.nodes.dirty() });
-    }
+    commitHistory(removedLinks.length ? { t: "delete", links: removedLinks } : null);
     RED.nodes.dirty(true);
     if (RED.view && typeof RED.view.redraw === "function") RED.view.redraw(true);
     const msgs = [`Removed ${removedLinks.length} wire(s)`];
@@ -293,13 +309,46 @@
     RED.notify(msgs.join(", ") + ".", removedLinks.length ? "success" : "warning");
   }
 
-  function apply(lang, code) {
-    console.log("[NRAFB_APPLY] apply", { lang, codeLength: (code || "").length });
+  // Builds a human confirm message when a change is large/risky enough to ask first;
+  // returns null when it's small enough to apply without interrupting the user.
+  function buildConfirmMessage(parsed, data) {
+    const planner = window.NRAFB_PLANNER;
+    if (!planner) return null;
+    if (parsed.kind === "delete") {
+      return `Delete ${ensureArray(data).length} node or tab item(s) from the canvas?`;
+    }
+    if (parsed.kind === "flow") {
+      const nodes = ensureArray(data).filter(n => n && n.type !== "tab");
+      const unknownTypeCount = nodes.filter(n => !RED.nodes.getType(n.type)).length;
+      if (!planner.decideConfirmation({ addedNodeCount: nodes.length, unknownTypeCount })) return null;
+      return `Add ${nodes.length} node(s)${unknownTypeCount ? ` (${unknownTypeCount} unknown type(s))` : ""} to the canvas?`;
+    }
+    if (parsed.kind === "node") {
+      const changedPropertyCount = Object.keys(data || {}).filter(k => k !== "id" && k !== "type" && k !== "z").length;
+      if (!planner.decideConfirmation({ changedPropertyCount })) return null;
+      return `Patch node ${parsed.target} \u2014 change ${changedPropertyCount} propert${changedPropertyCount === 1 ? "y" : "ies"}?`;
+    }
+    if (parsed.kind === "connect" || parsed.kind === "disconnect") {
+      const edgeCount = normalizeEdges(data).length;
+      if (!planner.decideConfirmation({ edgeCount })) return null;
+      return `${parsed.kind === "connect" ? "Add" : "Remove"} ${edgeCount} wire(s)?`;
+    }
+    return null;
+  }
+
+  function apply(lang, code, options = {}) {
+    console.log("[NRAFB_APPLY] apply", { lang, codeLength: (code || "").length, inBatch: !!options.inBatch });
     const parsed = parseLang(lang);
     if (!parsed) { RED.notify(`Unknown apply target: ${lang}`, "error"); return; }
     const data = parseJSON(code);
     if (!data) return;
-    if (parsed.kind === "delete" && !confirm(`Delete ${ensureArray(data).length} node or tab item(s) from the canvas?`)) return;
+
+    // The outer "Apply all" confirm already covers batched changes; skip the per-block
+    // confirm there, but Home Assistant actions always confirm individually regardless.
+    if (!options.inBatch) {
+      const confirmMessage = buildConfirmMessage(parsed, data);
+      if (confirmMessage && !confirm(confirmMessage)) return;
+    }
     if (parsed.kind === "ha-service") {
       if (!window.NRAFB || !window.NRAFB.state.homeAssistantId) {
         RED.notify("Select a Home Assistant connection before applying this action.", "error");
@@ -322,13 +371,59 @@
       return;
     }
     console.log("[NRAFB_APPLY] dispatching", parsed.kind, data);
-    if (parsed.kind === "flow") return applyFlow(parsed.target, data);
-    if (parsed.kind === "node") return applyNode(parsed.target, data);
-    if (parsed.kind === "subflow") return applySubflow(parsed.target, data);
-    if (parsed.kind === "delete") return applyDelete(data);
-    if (parsed.kind === "connect") return applyConnect(data);
-    if (parsed.kind === "disconnect") return applyDisconnect(data);
+    if (parsed.kind === "flow") return applyFlow(parsed.target, data, options);
+    if (parsed.kind === "node") return applyNode(parsed.target, data, options);
+    if (parsed.kind === "subflow") return applySubflow(parsed.target, data, options);
+    if (parsed.kind === "delete") return applyDelete(data, options);
+    if (parsed.kind === "connect") return applyConnect(data, options);
+    if (parsed.kind === "disconnect") return applyDisconnect(data, options);
     RED.notify(`Nothing to do for ${lang}`, "warning");
+  }
+
+  // Applies every block from one AI response as a single undo step, instead of leaving
+  // a partial canvas state if the user only clicks Apply on some of the blocks.
+  function applyBatch(blocks) {
+    if (!blocks || !blocks.length) return;
+    const planner = window.NRAFB_PLANNER;
+    const dirtyBefore = RED.nodes.dirty();
+    batchChanges = [];
+    try {
+      blocks.forEach(({ lang, code }) => apply(lang, code, { inBatch: true }));
+    } finally {
+      const collected = batchChanges;
+      batchChanges = null;
+      if (planner && RED.history && typeof RED.history.push === "function") {
+        const merged = planner.buildMultiHistoryEntry(collected, dirtyBefore);
+        if (merged) RED.history.push(merged);
+      }
+    }
+  }
+
+  // Builds a small box-and-arrow diagram for the Preview dialog so wiring can be checked
+  // visually instead of only reading a node/type count summary.
+  function buildDiagramSvg(parsed, data) {
+    const planner = window.NRAFB_PLANNER;
+    if (!planner) return null;
+    if (parsed.kind === "flow") {
+      const flowNodes = ensureArray(data).filter(n => n && n.type !== "tab" && n.id);
+      if (!flowNodes.length) return null;
+      const diagramNodes = flowNodes.map(n => ({ id: n.id, label: n.name || n.type, wires: n.wires }));
+      const positioned = planner.computeLayeredLayout(diagramNodes);
+      const edges = [];
+      flowNodes.forEach(n => (n.wires || []).forEach(port => (port || []).forEach(to => edges.push({ from: n.id, to }))));
+      return planner.buildFlowDiagramSvg(positioned, edges);
+    }
+    if (parsed.kind === "connect" || parsed.kind === "disconnect") {
+      const edges = normalizeEdges(data);
+      if (!edges.length) return null;
+      const ids = [...new Set(edges.flatMap(e => [e.from, e.to]))];
+      const wiresByFrom = new Map(ids.map(id => [id, []]));
+      edges.forEach(e => wiresByFrom.get(e.from).push(e.to));
+      const diagramNodes = ids.map(id => ({ id, label: id, wires: [wiresByFrom.get(id) || []] }));
+      const positioned = planner.computeLayeredLayout(diagramNodes);
+      return planner.buildFlowDiagramSvg(positioned, edges.map(e => ({ ...e, removed: parsed.kind === "disconnect" })));
+    }
+    return null;
   }
 
   function preview(lang, code) {
@@ -356,10 +451,12 @@
       summary = `Apply subflow (target: ${parsed.target})`;
     }
 
+    const diagramSvg = buildDiagramSvg(parsed, data);
     const $overlay = $(`<div class="nrafb-viewer-overlay"></div>`);
     const $body = $(`
-      <div class="nrafb-viewer-body" style="max-width:600px;min-width:360px;">
+      <div class="nrafb-viewer-body" style="max-width:700px;min-width:360px;">
         <h4 style="margin-top:0">Preview</h4>
+        <div class="nrafb-preview-diagram" style="overflow:auto;max-height:280px;background:#1e1e1e;border-radius:4px;margin-bottom:8px;"></div>
         <pre style="background:#f5f5f5;color:#333;padding:8px;border-radius:4px;white-space:pre-wrap;"></pre>
         <div style="text-align:right;margin-top:8px">
           <button class="nrafb-btn nrafb-preview-cancel">Cancel</button>
@@ -367,6 +464,8 @@
         </div>
       </div>
     `);
+    if (diagramSvg) $body.find(".nrafb-preview-diagram").html(diagramSvg);
+    else $body.find(".nrafb-preview-diagram").remove();
     $body.find("pre").text(summary);
     $overlay.append($body);
     $("body").append($overlay);
@@ -376,5 +475,5 @@
     });
   }
 
-  window.NRAFB_APPLY = { apply, preview };
+  window.NRAFB_APPLY = { apply, preview, applyBatch };
 })();

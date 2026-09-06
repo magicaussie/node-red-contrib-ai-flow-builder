@@ -15,11 +15,50 @@
            /^json:(delete|connect|disconnect|ha-service)$/.test(lang || "");
   }
 
+  // Flags node types that aren't installed and properties that don't match the real
+  // Node-RED schema, computed from RED.nodes.getType() rather than guessed.
+  function buildValidationWarnings(lang, code) {
+    if (typeof RED === "undefined" || !RED.nodes || typeof RED.nodes.getType !== "function") return [];
+    const planner = window.NRAFB_PLANNER;
+    if (!planner) return [];
+    let data;
+    try { data = JSON.parse(code); } catch (_) { return []; }
+
+    const checkNode = (node, fallbackType, warnings) => {
+      const type = (node && node.type) || fallbackType;
+      if (!node || !type || type === "tab") return;
+      const def = RED.nodes.getType(type);
+      if (!def) { warnings.push(`Unknown node type: ${type}`); return; }
+      const defaults = def.defaults || {};
+      const properties = Object.keys(defaults);
+      const required = properties.filter(k => defaults[k] && defaults[k].required);
+      const { unexpectedKeys, missingRequiredKeys } = planner.diffNodeAgainstSchema(node, { properties, required });
+      if (unexpectedKeys.length) warnings.push(`${type}: unexpected propert${unexpectedKeys.length > 1 ? "ies" : "y"} \u2014 ${unexpectedKeys.join(", ")}`);
+      if (missingRequiredKeys.length) warnings.push(`${type}: missing required field${missingRequiredKeys.length > 1 ? "s" : ""} \u2014 ${missingRequiredKeys.join(", ")}`);
+    };
+
+    const warnings = [];
+    if (/^json:flow:/.test(lang)) {
+      (Array.isArray(data) ? data : [data]).forEach(n => checkNode(n, null, warnings));
+    } else {
+      const m = /^json:node:([\w-]+)$/.exec(lang || "");
+      if (m) {
+        const existing = RED.nodes.node(m[1]);
+        checkNode(data, existing && existing.type, warnings);
+      }
+    }
+    return warnings;
+  }
+
   function renderCodeBlock(lang, code) {
     const safeLang = escapeHtml(lang || "text");
     const safeCode = escapeHtml(code);
     const applyBtn = isApplyable(lang)
       ? `<button class="nrafb-apply" data-lang="${safeLang}">Apply</button><button class="nrafb-preview" data-lang="${safeLang}">Preview</button>`
+      : "";
+    const warnings = buildValidationWarnings(lang, code);
+    const warningsHtml = warnings.length
+      ? `<div class="nrafb-codeblock-warnings">${warnings.map(w => `\u26a0 ${escapeHtml(w)}`).join("<br>")}</div>`
       : "";
     return (
       `<div class="nrafb-codeblock" data-lang="${safeLang}">` +
@@ -28,6 +67,7 @@
           `<button class="nrafb-copy">Copy</button>` +
           applyBtn +
         `</div>` +
+        warningsHtml +
         `<pre><code>${safeCode}</code></pre>` +
       `</div>`
     );
@@ -101,14 +141,17 @@
 
   $(document).on("click", ".nrafb-apply-all", function () {
     const $message = $(this).closest(".nrafb-msg");
-    const $blocks = $message.find(".nrafb-codeblock").filter(function () {
+    const blocks = $message.find(".nrafb-codeblock").filter(function () {
       return isApplyable($(this).data("lang"));
-    });
-    if (!confirm(`Apply all ${$blocks.length} AI changes to the canvas?`)) return;
-    $blocks.each(function () {
-      const $block = $(this);
-      window.NRAFB_APPLY.apply($block.data("lang"), $block.find("code").text());
-    });
+    }).map(function () {
+      return { lang: $(this).data("lang"), code: $(this).find("code").text() };
+    }).get();
+    if (!confirm(`Apply all ${blocks.length} AI changes to the canvas?`)) return;
+    if (window.NRAFB_APPLY && typeof window.NRAFB_APPLY.applyBatch === "function") {
+      window.NRAFB_APPLY.applyBatch(blocks);
+    } else {
+      alert("Apply handler not loaded yet.");
+    }
   });
 
   window.NRAFB_RENDER = { render };

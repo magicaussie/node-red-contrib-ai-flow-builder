@@ -91,6 +91,15 @@
   width: 100%;
 }
 .nrafb-context { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+.nrafb-autoenable {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  opacity: 0.8;
+  cursor: pointer;
+  user-select: none;
+}
 .nrafb-root textarea.nrafb-input {
   display: block !important;
   width: 100% !important;
@@ -138,6 +147,13 @@
   font-size: 11px;
 }
 .nrafb-codeblock-header button:hover { background: #3c3c3c; }
+.nrafb-codeblock-warnings {
+  background: #4a3b00;
+  color: #ffcf6b;
+  font-size: 11px;
+  padding: 6px 8px;
+  border-bottom: 1px solid #6b5400;
+}
 .nrafb-codeblock pre { margin: 0; padding: 8px; overflow: auto; max-height: 400px; }
 .nrafb-attachments { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
 .nrafb-attachment-chip {

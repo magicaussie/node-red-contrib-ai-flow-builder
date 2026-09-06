@@ -2,7 +2,7 @@
 
 > AI chat sidebar for **Node-RED** — chat with **OpenAI** or **Anthropic** right inside the editor. The assistant sees your flow(s), reads installed palette modules, accepts images/files, and can **apply code changes directly to your canvas** — the active tab or any other tab.
 
-> Version: **0.1.13**
+> Version: **0.1.14**
 
 ---
 
@@ -15,6 +15,11 @@
 - 🔒 Home Assistant actions require both the exact `domain.service` AND the target entity to be explicitly selected for that conversation — there is no static admin allowlist to maintain.
 - 🔗 Selected nodes automatically include the nodes connected by incoming and outgoing wires; full tabs are deduplicated before sending.
 - 📷 The entities picker always lists every Home Assistant entity (including domains like `camera`) — only the AI's prompt snapshot of your *selected* entities is size-limited, never the picker itself.
+- 🧠 Real node-type schemas (from the installed node's own `defaults`) are fed to the AI and checked against every proposed change, with inline ⚠ warnings for unknown types or unexpected/missing properties — before you even click Apply.
+- 🧰 New nodes are auto-positioned by wire dependency (not AI-guessed coordinates) and imported **disabled by default** — nothing runs until you review and enable them, unless you toggle "enable new nodes immediately".
+- ✅ Large or risky changes (many new nodes, unknown types, many edited properties, unknown services) require an extra confirmation click; small changes apply immediately.
+- 🔁 **Apply all** now applies an entire multi-block AI response as one atomic change with a single combined undo step, instead of leaving a partial canvas state.
+- 📈 The Preview dialog renders an actual box-and-arrow wiring diagram of the proposed change, not just a text summary.
 - 🤖 **OpenAI** and **Anthropic** — pick any model available from your account (free-text field with live suggestions + a direct link to each provider's official model list).
 - 🔒 API keys live in a Node-RED **config node** (encrypted `flows_cred.json`). They never reach the browser.
 - 📎 Multipart upload of images, PDFs, JSON/text — with an in-chat viewer (lightbox + text pane + PDF embed).

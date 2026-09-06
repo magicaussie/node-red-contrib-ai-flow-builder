@@ -92,6 +92,14 @@ describe("buildSystemPrompt", () => {
     assert.doesNotMatch(prompt, /debug/);
   });
 
+  it("includes real node type schemas so the AI stops guessing property names", () => {
+    const prompt = buildSystemPrompt({
+      typeSchemas: [{ type: "template", properties: ["name", "template"], required: ["template"] }]
+    });
+    assert.match(prompt, /Known node type schemas/);
+    assert.match(prompt, /template: name, template \(required: template\)/);
+  });
+
   it("enforces the Home Assistant host allowlist", () => {
     assert.doesNotThrow(() => prepareConfig({
       baseUrl: "http://homeassistant.local:8123",

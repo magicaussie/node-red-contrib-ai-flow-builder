@@ -11,7 +11,8 @@
       serviceIds: [],
       nodeIds: [],
       extraTabIds: [],
-      pendingAttachments: []
+      pendingAttachments: [],
+      autoEnableNewNodes: false
     }
   };
 
@@ -278,6 +279,9 @@
 
     $root.on("click", ".nrafb-attach", () => $root.find(".nrafb-file").trigger("click"));
     $root.on("change", ".nrafb-file", NRAFB.uploadFiles);
+    $root.on("change", ".nrafb-autoenable-input", function () {
+      NRAFB.state.autoEnableNewNodes = this.checked;
+    });
 
     $root.on("click", ".nrafb-tabpicker", NRAFB.openTabPicker);
 
@@ -612,6 +616,22 @@
       if (a.core !== b.core) return a.core ? -1 : 1;
       return a.module.localeCompare(b.module);
     });
+    // Real schemas (from the installed node's own `defaults`) for types already present in
+    // this context, so the AI matches actual property names instead of guessing them.
+    const typeSchemas = [];
+    try {
+      const seenTypes = new Set();
+      flowJson.forEach(n => {
+        if (!n || n.type === "tab" || seenTypes.has(n.type)) return;
+        seenTypes.add(n.type);
+        const def = RED.nodes.getType && RED.nodes.getType(n.type);
+        if (!def) return;
+        const defaults = def.defaults || {};
+        const properties = Object.keys(defaults);
+        const required = properties.filter(k => defaults[k] && defaults[k].required);
+        typeSchemas.push({ type: n.type, properties, required });
+      });
+    } catch (_) {}
     return {
       activeTabId,
       extraTabIds,
@@ -619,7 +639,8 @@
       serviceIds: NRAFB.state.serviceIds,
       nodeIds: selectedNodeIds,
       flowJson,
-      palette
+      palette,
+      typeSchemas
     };
   };
 
