@@ -336,7 +336,7 @@
     return null;
   }
 
-  function apply(lang, code, options = {}) {
+  async function apply(lang, code, options = {}) {
     console.log("[NRAFB_APPLY] apply", { lang, codeLength: (code || "").length, inBatch: !!options.inBatch });
     const parsed = parseLang(lang);
     if (!parsed) { RED.notify(`Unknown apply target: ${lang}`, "error"); return; }
@@ -370,6 +370,13 @@
       }).catch(error => RED.notify(`Home Assistant action failed: ${error.message}`, "error"));
       return;
     }
+    if (!options.inBatch && window.NRAFB && typeof window.NRAFB.createBackup === "function") {
+      try { await window.NRAFB.createBackup(`Before applying ${lang}`); }
+      catch (error) { if (!confirm(`Could not create AI backup: ${error.message}. Apply anyway?`)) return; }
+    }
+    if (!options.inBatch && window.NRAFB && typeof window.NRAFB.recordAudit === "function") {
+      window.NRAFB.recordAudit({ type: "apply", lang, detail: `${String(code || "").length} chars` });
+    }
     console.log("[NRAFB_APPLY] dispatching", parsed.kind, data);
     if (parsed.kind === "flow") return applyFlow(parsed.target, data, options);
     if (parsed.kind === "node") return applyNode(parsed.target, data, options);
@@ -382,10 +389,17 @@
 
   // Applies every block from one AI response as a single undo step, instead of leaving
   // a partial canvas state if the user only clicks Apply on some of the blocks.
-  function applyBatch(blocks) {
+  async function applyBatch(blocks) {
     if (!blocks || !blocks.length) return;
     const planner = window.NRAFB_PLANNER;
     const dirtyBefore = RED.nodes.dirty();
+    if (window.NRAFB && typeof window.NRAFB.createBackup === "function") {
+      try { await window.NRAFB.createBackup(`Before applying ${blocks.length} AI blocks`); }
+      catch (error) { if (!confirm(`Could not create AI backup: ${error.message}. Apply anyway?`)) return; }
+    }
+    if (window.NRAFB && typeof window.NRAFB.recordAudit === "function") {
+      window.NRAFB.recordAudit({ type: "apply-all", detail: `${blocks.length} block(s)` });
+    }
     batchChanges = [];
     try {
       blocks.forEach(({ lang, code }) => apply(lang, code, { inBatch: true }));

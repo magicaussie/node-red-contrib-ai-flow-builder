@@ -2,7 +2,7 @@
 
 > AI chat sidebar for **Node-RED** — chat with **OpenAI** or **Anthropic** right inside the editor. The assistant sees your flow(s), reads installed palette modules, accepts images/files, and can **apply code changes directly to your canvas** — the active tab or any other tab.
 
-> Version: **0.1.15**
+> Version: **0.1.16**
 
 ---
 
@@ -21,6 +21,9 @@
 - 🔁 **Apply all** now applies an entire multi-block AI response as one atomic change with a single combined undo step, instead of leaving a partial canvas state.
 - 📈 The Preview dialog renders an actual box-and-arrow wiring diagram of the proposed change, not just a text summary.
 - 🐞 The AI can propose adding temporary `debug` nodes for testing; click **test capture** in the sidebar, deploy, trigger the flow, and the captured runtime output is sent back to the AI in your next message so it can confirm the flow actually works instead of only reviewing its structure.
+- 🧭 Mode selector for **Ask / Build / Modify / Test / Review / Document**, plus deterministic slash commands such as `/test`, `/review`, `/document`, `/enable`, `/disable`, and `/remove-debug`.
+- 🧯 AI backups, restore, and audit log: every canvas apply creates a snapshot under `<userDir>/ai-flow-builder/backups/`, action history is written to `audit.log`, and the sidebar can restore or inspect recent AI activity.
+- 🧾 Apply-all now opens a selectable review checklist before touching the canvas, so you can apply only the blocks you want.
 - 🤖 **OpenAI** and **Anthropic** — pick any model available from your account (free-text field with live suggestions + a direct link to each provider's official model list).
 - 🔒 API keys live in a Node-RED **config node** (encrypted `flows_cred.json`). They never reach the browser.
 - 📎 Multipart upload of images, PDFs, JSON/text — with an in-chat viewer (lightbox + text pane + PDF embed).

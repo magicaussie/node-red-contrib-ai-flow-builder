@@ -18,6 +18,8 @@
           <button class="nrafb-btn nrafb-delete" title="Delete chat"><i class="fa fa-trash"></i></button>
           <button class="nrafb-btn nrafb-export" title="Export chat"><i class="fa fa-download"></i></button>
           <button class="nrafb-btn nrafb-cleanup" title="Clean up old chats"><i class="fa fa-broom"></i></button>
+          <button class="nrafb-btn nrafb-restore" title="Restore last AI backup"><i class="fa fa-undo"></i></button>
+          <button class="nrafb-btn nrafb-audit" title="Show AI audit log"><i class="fa fa-list-alt"></i></button>
           <span class="nrafb-spacer"></span>
           <select class="nrafb-provider" title="Provider"></select>
           <select class="nrafb-home-assistant" title="Home Assistant entities"></select>
@@ -28,6 +30,17 @@
         </div>
         <div class="nrafb-messages"></div>
         <div class="nrafb-inputbar">
+          <div class="nrafb-mode-row">
+            <select class="nrafb-mode" title="AI mode">
+              <option value="ask">Ask</option>
+              <option value="build">Build</option>
+              <option value="modify">Modify</option>
+              <option value="test">Test</option>
+              <option value="review">Review</option>
+              <option value="document">Document</option>
+            </select>
+            <span class="nrafb-context-summary">Context: active tab</span>
+          </div>
           <div class="nrafb-context">
             <button class="nrafb-btn nrafb-tabpicker" title="Add tab context"><i class="fa fa-folder-open"></i> <span class="nrafb-tabpicker-label">active tab</span></button>
             <button class="nrafb-btn nrafb-entitypicker" title="Choose Home Assistant entities"><i class="fa fa-list"></i> <span class="nrafb-entitypicker-label">entities</span></button>

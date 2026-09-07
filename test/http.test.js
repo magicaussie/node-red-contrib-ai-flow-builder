@@ -80,4 +80,30 @@ describe("AI Chat HTTP routes", () => {
     assert.match(response.text, /event: error/);
     assert.match(response.text, /unknown provider/);
   });
+
+  it("creates, lists, and fetches AI flow backups", async () => {
+    const created = await request(app)
+      .post("/ai-flow-builder/backups")
+      .send({ conversationId: "conv1", reason: "test", flowJson: [{ id: "n1", type: "inject" }] })
+      .expect(200);
+    assert.strictEqual(created.body.nodeCount, 1);
+
+    const listed = await request(app).get("/ai-flow-builder/backups").expect(200);
+    assert.strictEqual(listed.body.length, 1);
+    assert.strictEqual(listed.body[0].id, created.body.id);
+
+    const fetched = await request(app).get(`/ai-flow-builder/backups/${created.body.id}`).expect(200);
+    assert.strictEqual(fetched.body.flowJson[0].id, "n1");
+  });
+
+  it("records and lists audit events", async () => {
+    await request(app)
+      .post("/ai-flow-builder/audit")
+      .send({ type: "apply", detail: "unit-test" })
+      .expect(200);
+
+    const listed = await request(app).get("/ai-flow-builder/audit").expect(200);
+    assert.strictEqual(listed.body[0].type, "apply");
+    assert.strictEqual(listed.body[0].detail, "unit-test");
+  });
 });

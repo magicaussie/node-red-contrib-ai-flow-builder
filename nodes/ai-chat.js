@@ -78,9 +78,12 @@ module.exports = function (RED) {
     if (!node || node.type !== "ai-home-assistant-config") return res.status(400).json({ error: "invalid homeAssistantId" });
     try {
       const { domain, service, target, data, entityIds, serviceIds } = req.body || {};
+      const action = { domain, service, target, data, allowedEntities: entityIds, allowedServices: serviceIds };
+      const result = await callHomeAssistantService(node, action);
+      await storage.appendAudit({ type: "ha-service", homeAssistantId: req.params.id, domain, service, target });
       res.json({
         ok: true,
-        result: await callHomeAssistantService(node, { domain, service, target, data, allowedEntities: entityIds, allowedServices: serviceIds })
+        result
       });
     } catch (error) { res.status(400).json({ error: error.message }); }
   });
@@ -113,6 +116,36 @@ module.exports = function (RED) {
       const days = Math.max(1, Math.min(Number(req.body && req.body.days) || 30, 3650));
       res.json({ deleted: await storage.cleanupConversations(days) });
     } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  RED.httpAdmin.get("/ai-flow-builder/backups", readPerm, async (req, res) => {
+    try { res.json(await storage.listBackups(Number(req.query.limit) || 20)); }
+    catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  RED.httpAdmin.post("/ai-flow-builder/backups", writePerm, express.json({ limit: "25mb" }), async (req, res) => {
+    try {
+      res.json(await storage.saveBackup({
+        conversationId: req.body && req.body.conversationId,
+        reason: req.body && req.body.reason,
+        flowJson: req.body && req.body.flowJson
+      }));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  RED.httpAdmin.get("/ai-flow-builder/backups/:id", readPerm, async (req, res) => {
+    try { res.json(await storage.getBackup(req.params.id)); }
+    catch (e) { res.status(404).json({ error: "not found" }); }
+  });
+
+  RED.httpAdmin.get("/ai-flow-builder/audit", readPerm, async (req, res) => {
+    try { res.json(await storage.listAudit(Number(req.query.limit) || 100)); }
+    catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  RED.httpAdmin.post("/ai-flow-builder/audit", writePerm, express.json({ limit: "100kb" }), async (req, res) => {
+    try { res.json(await storage.appendAudit(req.body || {})); }
+    catch (e) { res.status(500).json({ error: e.message }); }
   });
 
   RED.httpAdmin.delete("/ai-flow-builder/conversations/:id", writePerm, async (req, res) => {

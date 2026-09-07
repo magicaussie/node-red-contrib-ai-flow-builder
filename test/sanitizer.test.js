@@ -108,6 +108,12 @@ describe("buildSystemPrompt", () => {
     assert.match(prompt, /\[kitchen light debug\] topic=light\.kitchen: on/);
   });
 
+  it("includes mode-specific instructions", () => {
+    const prompt = buildSystemPrompt({ mode: "test" });
+    assert.match(prompt, /Current AI mode: test/);
+    assert.match(prompt, /temporary debug nodes/);
+  });
+
   it("enforces the Home Assistant host allowlist", () => {
     assert.doesNotThrow(() => prepareConfig({
       baseUrl: "http://homeassistant.local:8123",

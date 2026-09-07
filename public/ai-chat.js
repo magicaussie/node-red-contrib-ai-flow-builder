@@ -14,7 +14,8 @@
       pendingAttachments: [],
       pendingDebugCapture: [],
       debugCaptureActive: false,
-      autoEnableNewNodes: false
+      autoEnableNewNodes: false,
+      mode: "ask"
     }
   };
 
@@ -245,11 +246,73 @@
     NRAFB.appendSystemMessage(`Deleted ${result.deleted} old conversation(s).`);
   };
 
+  NRAFB.currentFlowSnapshot = function () {
+    return NRAFB.getAllFlowNodes().map(node => JSON.parse(JSON.stringify(node)));
+  };
+
+  NRAFB.createBackup = async function (reason) {
+    const response = await fetch("ai-flow-builder/backups", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ conversationId: NRAFB.state.conversationId, reason, flowJson: NRAFB.currentFlowSnapshot() })
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`);
+    return result;
+  };
+
+  NRAFB.recordAudit = async function (entry) {
+    try {
+      await fetch("ai-flow-builder/audit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversationId: NRAFB.state.conversationId, ...entry })
+      });
+    } catch (_) {}
+  };
+
+  NRAFB.showAudit = async function () {
+    const response = await fetch("ai-flow-builder/audit?limit=50");
+    const entries = await response.json();
+    const text = (entries || []).map(e => `${new Date(e.ts).toLocaleString()}  ${e.type || "event"}  ${e.detail || e.reason || e.domain || ""}`).join("\n") || "No audit events recorded.";
+    NRAFB.openTextDialog("AI audit log", text);
+  };
+
+  NRAFB.restoreLastBackup = async function () {
+    const listResponse = await fetch("ai-flow-builder/backups?limit=1");
+    const backups = await listResponse.json();
+    if (!backups.length) return NRAFB.appendSystemMessage("No AI backups found.");
+    const backupResponse = await fetch(`ai-flow-builder/backups/${backups[0].id}`);
+    const backup = await backupResponse.json();
+    if (!confirm(`Restore backup from ${new Date(backup.createdAt).toLocaleString()}? This imports the saved flow snapshot into the editor; use Node-RED undo if needed before deploy.`)) return;
+    try {
+      RED.nodes.import(backup.flowJson || [], { generateIds: false, addFlow: true });
+      RED.nodes.dirty(true);
+      if (RED.view && typeof RED.view.redraw === "function") RED.view.redraw(true);
+      await NRAFB.recordAudit({ type: "restore", backupId: backup.id, detail: `Restored ${backup.flowJson.length} nodes` });
+      RED.notify("AI backup restored into the editor. Review and deploy when ready.", "success");
+    } catch (error) {
+      RED.notify(`Restore failed: ${error.message}`, "error");
+    }
+  };
+
+  NRAFB.openTextDialog = function (title, text) {
+    const $overlay = $(`<div class="nrafb-viewer-overlay"></div>`);
+    const $body = $(`<div class="nrafb-viewer-body" style="min-width:360px;max-width:760px;"><h4></h4><pre class="nrafb-viewer-text" style="background:#1e1e1e;color:#d4d4d4;padding:12px;max-height:70vh;overflow:auto;white-space:pre-wrap;"></pre><div style="text-align:right;margin-top:8px"><button class="nrafb-btn nrafb-viewer-close">close</button></div></div>`);
+    $body.find("h4").text(title);
+    $body.find("pre").text(text);
+    $overlay.append($body);
+    $("body").append($overlay);
+    $overlay.on("click", e => { if (e.target === $overlay[0] || $(e.target).hasClass("nrafb-viewer-close")) $overlay.remove(); });
+  };
+
   NRAFB.bindUi = function () {
     NRAFB.root.on("click", ".nrafb-new", NRAFB.newConversation);
     NRAFB.root.on("click", ".nrafb-delete", NRAFB.deleteConversation);
     NRAFB.root.on("click", ".nrafb-export", NRAFB.exportConversation);
     NRAFB.root.on("click", ".nrafb-cleanup", NRAFB.cleanupConversations);
+    NRAFB.root.on("click", ".nrafb-restore", NRAFB.restoreLastBackup);
+    NRAFB.root.on("click", ".nrafb-audit", NRAFB.showAudit);
     NRAFB.root.on("change", ".nrafb-conversations", function () {
       NRAFB.loadConversation($(this).val());
     });
@@ -258,6 +321,10 @@
 
     $root.on("change", ".nrafb-provider", function () {
       NRAFB.state.providerId = $(this).val();
+    });
+    $root.on("change", ".nrafb-mode", function () {
+      NRAFB.state.mode = $(this).val() || "ask";
+      NRAFB.updateContextLabels();
     });
     $root.on("change", ".nrafb-home-assistant", function () {
       NRAFB.state.homeAssistantId = $(this).val() || null;
@@ -505,6 +572,12 @@
     NRAFB.root.find(".nrafb-entitypicker-label").text(NRAFB.state.entityIds.length ? `entities (${NRAFB.state.entityIds.length})` : "entities");
     NRAFB.root.find(".nrafb-servicepicker-label").text(NRAFB.state.serviceIds.length ? `services (${NRAFB.state.serviceIds.length})` : "services");
     NRAFB.root.find(".nrafb-nodepicker-label").text(NRAFB.state.nodeIds.length ? `nodes (${NRAFB.state.nodeIds.length})` : "nodes");
+    const parts = [`mode: ${NRAFB.state.mode}`];
+    if (NRAFB.state.nodeIds.length) parts.push(`${NRAFB.state.nodeIds.length} selected node(s)`); else parts.push("active tab");
+    if (NRAFB.state.entityIds.length) parts.push(`${NRAFB.state.entityIds.length} entit${NRAFB.state.entityIds.length === 1 ? "y" : "ies"}`);
+    if (NRAFB.state.serviceIds.length) parts.push(`${NRAFB.state.serviceIds.length} service(s)`);
+    if (NRAFB.state.pendingDebugCapture.length) parts.push(`${NRAFB.state.pendingDebugCapture.length} debug event(s)`);
+    NRAFB.root.find(".nrafb-context-summary").text(`Context: ${parts.join(" · ")}`);
   };
 
   // Selections are per-conversation only — cleared whenever a chat is created or switched.
@@ -717,6 +790,7 @@
     return {
       activeTabId,
       extraTabIds,
+      mode: NRAFB.state.mode,
       entityIds: NRAFB.state.entityIds,
       serviceIds: NRAFB.state.serviceIds,
       nodeIds: selectedNodeIds,
@@ -725,6 +799,39 @@
       typeSchemas,
       debugCapture: NRAFB.state.pendingDebugCapture
     };
+  };
+
+  NRAFB.handleSlashCommand = function (text) {
+    if (!text.startsWith("/")) return null;
+    const [command, ...rest] = text.slice(1).split(/\s+/);
+    const body = rest.join(" ").trim();
+    const modeMap = {
+      ask: "ask", build: "build", modify: "modify", test: "test", review: "review", document: "document"
+    };
+    if (modeMap[command]) {
+      NRAFB.state.mode = modeMap[command];
+      NRAFB.root.find(".nrafb-mode").val(NRAFB.state.mode);
+      NRAFB.updateContextLabels();
+      return body || `Use ${NRAFB.state.mode} mode on the selected context.`;
+    }
+    if (command === "enable" || command === "disable") {
+      const enable = command === "enable";
+      const ids = NRAFB.state.nodeIds.length ? NRAFB.state.nodeIds : (RED.view && RED.view.selection ? RED.view.selection().nodes.map(n => n.id) : []);
+      ids.forEach(id => { const node = RED.nodes.node(id); if (node) { node.d = !enable; node.changed = true; } });
+      RED.nodes.dirty(true);
+      if (RED.view && typeof RED.view.redraw === "function") RED.view.redraw(true);
+      NRAFB.recordAudit({ type: command, detail: `${ids.length} node(s)` });
+      NRAFB.appendSystemMessage(`${enable ? "Enabled" : "Disabled"} ${ids.length} node(s).`);
+      return false;
+    }
+    if (command === "remove-debug") {
+      const nodes = NRAFB.getAllFlowNodes().filter(n => n.type === "debug" && (!NRAFB.state.nodeIds.length || NRAFB.state.nodeIds.includes(n.id)));
+      if (!nodes.length) { NRAFB.appendSystemMessage("No debug nodes found to remove."); return false; }
+      if (window.NRAFB_APPLY) window.NRAFB_APPLY.apply("json:delete", JSON.stringify(nodes.map(n => n.id)));
+      return false;
+    }
+    NRAFB.appendSystemMessage(`Unknown slash command: /${command}`);
+    return false;
   };
 
   NRAFB.sendMessage = async function () {
@@ -739,6 +846,9 @@
     const $input = NRAFB.root.find(".nrafb-input");
     const text = ($input.val() || "").trim();
     if (!text) return;
+    const slash = NRAFB.handleSlashCommand(text);
+    if (slash === false) { $input.val(""); return; }
+    const outboundText = slash || text;
     NRAFB.root.find(".nrafb-messages").append($(`<div class="nrafb-msg user"></div>`).text(text));
     $input.val("");
 
@@ -747,7 +857,7 @@
 
     try {
       const body = {
-        content: text,
+        content: outboundText,
         attachments: NRAFB.state.pendingAttachments,
         flowContext: NRAFB.collectFlowContext(),
         providerId: NRAFB.state.providerId,

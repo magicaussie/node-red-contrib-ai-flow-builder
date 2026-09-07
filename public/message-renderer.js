@@ -146,9 +146,27 @@
     }).map(function () {
       return { lang: $(this).data("lang"), code: $(this).find("code").text() };
     }).get();
-    if (!confirm(`Apply all ${blocks.length} AI changes to the canvas?`)) return;
+    if (!blocks.length) return;
     if (window.NRAFB_APPLY && typeof window.NRAFB_APPLY.applyBatch === "function") {
-      window.NRAFB_APPLY.applyBatch(blocks);
+      const $overlay = $(`<div class="nrafb-viewer-overlay"></div>`);
+      const $body = $(`<div class="nrafb-viewer-body" style="min-width:360px;max-width:720px;"><h4 style="margin-top:0">Review AI changes</h4><div class="nrafb-review-list"></div><div style="text-align:right;margin-top:8px"><button class="nrafb-btn nrafb-review-cancel">Cancel</button><button class="nrafb-btn nrafb-review-apply" style="background:#4a9;color:#fff;">Apply selected</button></div></div>`);
+      blocks.forEach((block, index) => {
+        const firstLine = String(block.code || "").split("\n").find(Boolean) || "(empty)";
+        const $row = $(`<label class="nrafb-context-row"><input type="checkbox" checked data-index="${index}"><span><strong></strong><small></small></span></label>`);
+        $row.find("strong").text(block.lang);
+        $row.find("small").text(firstLine.slice(0, 160));
+        $body.find(".nrafb-review-list").append($row);
+      });
+      $overlay.append($body);
+      $("body").append($overlay);
+      $overlay.on("click", e => {
+        if (e.target === $overlay[0] || $(e.target).hasClass("nrafb-review-cancel")) $overlay.remove();
+        if ($(e.target).hasClass("nrafb-review-apply")) {
+          const selected = $body.find("input:checked").map(function () { return blocks[Number($(this).data("index"))]; }).get();
+          if (selected.length && confirm(`Apply ${selected.length} selected AI change(s) to the canvas?`)) window.NRAFB_APPLY.applyBatch(selected);
+          $overlay.remove();
+        }
+      });
     } else {
       alert("Apply handler not loaded yet.");
     }

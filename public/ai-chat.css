@@ -91,6 +91,9 @@
   width: 100%;
 }
 .nrafb-context { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+.nrafb-mode-row { display: flex; gap: 6px; align-items: center; }
+.nrafb-mode { width: 92px; min-width: 92px; height: 28px; }
+.nrafb-context-summary { flex: 1; min-width: 0; font-size: 11px; opacity: 0.75; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nrafb-autoenable {
   display: inline-flex;
   align-items: center;
